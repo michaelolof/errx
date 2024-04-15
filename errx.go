@@ -25,19 +25,21 @@ type Err[T comparable] struct {
 // NewData returns a timestamped error given the timestamp, message and a data value of type T
 func NewData[T comparable](ts int, msg string, data T) error {
 	var empD T
-	var erro error
+	var err error
 	if data == empD {
-		erro = fmt.Errorf("STAMP-%d: %s", ts, msg)
+		err = fmt.Errorf("STAMP-%d: %s", ts, msg)
 	} else {
-		erro = fmt.Errorf("STAMP-%d: %s: ERRDATA-%v", ts, msg, data)
+		err = fmt.Errorf("STAMP-%d: %s: ERRDATA-%v", ts, msg, data)
 	}
 
-	if _logger != nil {
-		_logger(erro)
-	}
+	go func() {
+		if _logger != nil {
+			_logger(err)
+		}
+	}()
 
 	return &Err[T]{
-		err:  erro,
+		err:  err,
 		data: data,
 	}
 }
@@ -45,19 +47,21 @@ func NewData[T comparable](ts int, msg string, data T) error {
 // WrapData wraps an existing error given the timestamp, and a data value of type T
 func WrapData[T comparable](ts int, err error, data T) error {
 	var empD T
-	var erro error
+	var _err error
 	if data == empD {
-		erro = fmt.Errorf("STAMP-%d: %w", ts, err)
+		_err = fmt.Errorf("STAMP-%d: %w", ts, err)
 	} else {
-		erro = fmt.Errorf("STAMP-%d: %w: ERRDATA-%v", ts, err, data)
+		_err = fmt.Errorf("STAMP-%d: %w: ERRDATA-%v", ts, err, data)
 	}
 
-	if _logger != nil {
-		_logger(erro)
-	}
+	go func() {
+		if _logger != nil {
+			_logger(_err)
+		}
+	}()
 
 	return &Err[T]{
-		err:  erro,
+		err:  _err,
 		data: data,
 	}
 }
