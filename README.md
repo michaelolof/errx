@@ -85,4 +85,4 @@ Timestamps are encouraged because:
 The errx module has no need for reflection because it relies on statically generated timestamps instead of stack traces
 
 ## Editor Support
-You can automate the creation of timestamps on VSCode by using the [HypserSnips](https://marketplace.visualstudio.com/items?itemName=draivin.hsnips) extension that allows you execute javascript in your code snippets
+You can automate the creation of timestamps on VSCode by using the [HypserSnips](https://marketplace.visualstudio.com/items?itemName=draivin.hsnips) extension that allows you execute javascript in your code snippets.
