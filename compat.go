@@ -1,9 +1,18 @@
 package errx
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 func Is(err error, target error) bool {
-	return errors.Is(err, target)
+	itis := errors.Is(err, target)
+	if itis {
+		return itis
+	} else {
+		return strings.Contains(err.Error(), fmt.Sprintf(" kind %s", target.Error()))
+	}
 }
 
 func Join(errs ...error) error {

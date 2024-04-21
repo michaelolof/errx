@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
 )
 
 var (
@@ -18,19 +20,53 @@ func Split(err error) []error {
 }
 
 type Err[T comparable] struct {
-	err  error
-	data T
+	msg     string
+	stamp   int
+	kindStr string
+	data    T
+	err     error
+}
+
+// New returns an error given a timestamp and error message.
+func New(ts int, msg string) error {
+	return NewErr[any](ts, msg, nil, nil)
+}
+
+// Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
+func Wrap(ts int, err error) error {
+	return WrapErr[any](ts, err, nil, nil)
 }
 
 // NewData returns a timestamped error given the timestamp, message and a data value of type T
 func NewData[T comparable](ts int, msg string, data T) error {
-	var empD T
-	var err error
-	if data == empD {
-		err = fmt.Errorf("STAMP-%d: %s", ts, msg)
-	} else {
-		err = fmt.Errorf("STAMP-%d: %s: ERRDATA-%v", ts, msg, data)
+	return NewErr(ts, msg, nil, data)
+}
+
+// WrapData wraps an existing error given the timestamp, and a data value of type T
+func WrapData[T comparable](ts int, err error, data T) error {
+	return WrapErr(ts, err, nil, data)
+}
+
+// NewF returns a timestamped error with the message formatted according to a format specifier.
+func Newf(ts int, msg string, a ...any) error {
+	return New(ts, fmt.Sprintf(msg, a...))
+}
+
+// NewErr returns a timestamped error given the timestamp, error kind, message and a data value of type T
+func NewErr[T comparable](ts int, msg string, kind error, data T) error {
+	var kindStr string
+	if kind != nil {
+		kindStr = kind.Error()
 	}
+
+	err := &Err[T]{
+		stamp:   ts,
+		msg:     msg,
+		kindStr: kindStr,
+		data:    data,
+	}
+
+	err.err = err.buildErr(nil)
 
 	go func() {
 		if _logger != nil {
@@ -38,74 +74,95 @@ func NewData[T comparable](ts int, msg string, data T) error {
 		}
 	}()
 
-	return &Err[T]{
-		err:  err,
-		data: data,
-	}
+	return err
 }
 
-// WrapData wraps an existing error given the timestamp, and a data value of type T
-func WrapData[T comparable](ts int, err error, data T) error {
-	var empD T
-	var _err error
-	if data == empD {
-		_err = fmt.Errorf("STAMP-%d: %w", ts, err)
-	} else {
-		_err = fmt.Errorf("STAMP-%d: %w: ERRDATA-%v", ts, err, data)
+// WrapErr wraps an existing error given the timestamp, error kind, and a data value of type T
+func WrapErr[T comparable](ts int, err error, kind error, data T) error {
+	var kindStr string
+	if kind != nil {
+		kindStr = kind.Error()
 	}
+
+	inst := &Err[T]{
+		stamp:   ts,
+		kindStr: kindStr,
+		data:    data,
+	}
+
+	inst.err = inst.buildErr(err)
 
 	go func() {
 		if _logger != nil {
-			_logger(_err)
+			_logger(inst)
 		}
 	}()
 
-	return &Err[T]{
-		err:  _err,
-		data: data,
+	return inst
+}
+
+// NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
+func NewKind(ts int, msg string, kind error) error {
+	return NewErr[any](ts, msg, kind, nil)
+}
+
+// WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
+func WrapKind(ts int, err error, kind error) error {
+	return WrapErr[any](ts, err, kind, nil)
+}
+
+func (e *Err[T]) buildErr(wrapErr error) error {
+	var ed T
+	var details string
+	data, err1 := json.Marshal(e.data)
+	if err1 != nil {
+		return fmt.Errorf("[stamp %d] %w", e.stamp, err1)
 	}
-}
 
-// New returns an error given a timestamp and error message.
-func New(ts int, msg string) error {
-	return NewData[any](ts, msg, nil)
-}
+	if e.kindStr != "" && e.data != ed {
+		details = fmt.Sprintf("[stamp %d kind %s data %v]", e.stamp, e.kindStr, string(data))
+	} else if e.kindStr != "" && e.data == ed {
+		details = fmt.Sprintf("[stamp %d kind %s]", e.stamp, e.kindStr)
+	} else if e.data != ed && e.kindStr == "" {
+		details = fmt.Sprintf("[stamp %d data %v]", e.stamp, string(data))
+	} else {
+		details = fmt.Sprintf("[stamp %d]", e.stamp)
+	}
 
-// Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
-func Wrap(ts int, err error) error {
-	return WrapData[any](ts, err, nil)
-}
-
-// NewFmt returns a timestamped error with the message formatted according to a format specifier.
-func NewFmt(ts int, msg string, a ...any) error {
-	return New(ts, fmt.Sprintf(msg, a...))
-}
-
-// NewKind returns a timestamped error given the timestamp, error kind, message and a data value of type T
-func NewKind[T comparable](ts int, kind error, msg string, data T) error {
-	return WrapData(ts, fmt.Errorf("%w: %s", kind, msg), data)
-}
-
-// WrapKind wraps an existing error given the timestamp, error kind, and a data value of type T
-func WrapKind[T comparable](ts int, kind error, err error, data T) error {
-	return WrapData(ts, fmt.Errorf("%w: %w", kind, err), data)
-}
-
-func NewOnly(ts int, kind error, msg string) error {
-	return NewKind[any](ts, kind, msg, nil)
-}
-
-func WrapOnly(ts int, kind error, err error) error {
-	return WrapKind[any](ts, kind, err, nil)
+	if wrapErr == nil && e.msg != "" {
+		return fmt.Errorf("%s %s", details, e.msg)
+	} else if wrapErr != nil {
+		return fmt.Errorf("%s; %w", details, wrapErr)
+	}
+	return nil
 }
 
 func (e *Err[T]) Error() string {
 	return e.err.Error()
 }
 
-// Adds support for [errors.Is] function
-func (e Err[T]) Is(target error) bool {
-	return errors.Is(e.err, target)
+func (e *Err[T]) Is(target error) bool {
+	itis := errors.Is(e.err, target)
+	if itis {
+		return itis
+	} else {
+		return e.err.Error() == target.Error()
+	}
+}
+
+func (e *Err[T]) Data() any {
+	return e.data
+}
+
+func (e *Err[T]) KindStr() string {
+	if e.kindStr != "" {
+		return e.kindStr
+	}
+	return ""
+}
+
+func (e *Err[T]) Stamp() int {
+	return e.stamp
 }
 
 // Adds support for [errors.Unwrap] function
@@ -113,51 +170,86 @@ func (e Err[T]) Unwrap() error {
 	return errors.Unwrap(e.err)
 }
 
-// Adss support for marshaling error object
-func (e *Err[T]) MarshalJSON() ([]byte, error) {
-	return json.Marshal(newErrObj(e.Error(), e.data))
-}
+// Unwraps the error retrieves the data values and returns the first one that matches the givent type
+func FindData[T comparable](err error) (*T, bool) {
+	for err != nil {
+		if se, ok := err.(Stamper); ok {
+			data := se.Data()
 
-// Adss support for unmarshaling error object
-func (e *Err[T]) UnmarshalJSON(data []byte) error {
-	var obj ErrObj
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
+			if v, vok := data.(T); vok {
+				return &v, true
+			} else if v, vok := data.(map[string]any); vok {
+				val, err1 := parseMapToStruct[T](v)
+				if err1 != nil {
+					err = Unwrap(err)
+					continue
+				}
+
+				return val, true
+			}
+		}
+		err = Unwrap(err)
 	}
 
-	var dataVal T
-	if obj.Data != nil {
-		v, ok := obj.Data.(T)
-		if ok {
-			dataVal = v
+	return nil, false
+}
+
+// Unwraps the error and retrieves the data values and returns the first one that matches the specified error kind and given type
+func FindDataOfKind[T comparable](err error, kind error) (*T, bool) {
+	for err != nil {
+		if se, ok := err.(Stamper); ok {
+			kindStr := se.KindStr()
+
+			if kindStr == kind.Error() {
+				data := se.Data()
+
+				if v, vok := data.(T); vok {
+					return &v, true
+				} else if v, vok := data.(map[string]any); vok {
+					val, err1 := parseMapToStruct[T](v)
+					if err1 != nil {
+						err = Unwrap(err)
+						continue
+					}
+
+					return val, true
+				}
+			}
+		}
+		err = Unwrap(err)
+	}
+
+	return nil, false
+}
+
+type Stamper interface {
+	Stamp() int
+	Data() any
+	KindStr() string
+}
+
+func parseMapToStruct[T any](dic map[string]any) (*T, error) {
+
+	var structT T
+	sv := reflect.ValueOf(&structT)
+
+	for _, f := range reflect.VisibleFields(reflect.TypeOf(structT)) {
+		tags := strings.Split(f.Tag.Get("json"), ",")
+
+		var name string
+		if len(tags) > 0 && tags[0] != "" {
+			name = tags[0]
+		} else {
+			name = f.Name
+		}
+
+		for key, val := range dic {
+			if name == key {
+				sv.Elem().FieldByName(f.Name).Set(reflect.ValueOf(val))
+				break
+			}
 		}
 	}
-	e.err = &Err[T]{
-		err:  errors.New(obj.Msg),
-		data: dataVal,
-	}
-	e.data = dataVal
-	return nil
-}
 
-// Tries to retrieve and cast a data value on an error object to given type T
-func GetData[T comparable](err error) (T, error) {
-	var empty T
-	var errd *Err[T]
-	if errors.As(err, &errd) {
-		return errd.data, nil
-	}
-	return empty, fmt.Errorf("couldn't cast error data to given type [T]: %w", err)
-}
-
-type ErrObj struct {
-	Msg  string `json:"msg"`
-	Data any    `json:"data"`
-}
-
-func newErrObj(msg string, data any) ErrObj {
-	return ErrObj{
-		Msg:  msg,
-		Data: data,
-	}
+	return &structT, nil
 }

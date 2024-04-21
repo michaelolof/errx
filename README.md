@@ -66,8 +66,9 @@ The nature of Golang error handling is one which errors are passed/returned as v
 <br /><br />
 Golang solves this by wrapping its errors with decorator texts (A descriptive text that help identify/trace where your errors are occurring). E.g
 ```go
+data, err := logs.readFile()
 if err != nil {
-    return fmt.Errorf("error reading logstash file", err)
+    return nil, fmt.Errorf("error reading logstash file: %w", err)
 }
 ```
 <br />
