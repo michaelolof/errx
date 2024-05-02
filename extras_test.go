@@ -21,8 +21,7 @@ func TestParseStamedError(t *testing.T) {
 	assert.Equal(t, itMatches, true, 1713680824055)
 
 	msg := err.Error()
-	parsed, err := ParseStampedError(msg)
-	assert.Equal(t, err, nil, 1713680501161)
+	parsed := ParseStampedError(msg)
 
 	itMatches = Is(parsed, notfound)
 	assert.Equal(t, itMatches, true, 1713680824055)
@@ -39,8 +38,7 @@ func TestParseStamedError_Case2(t *testing.T) {
 	err = WrapData(1713607010089, err, "https://www.google.com")
 
 	msg := err.Error()
-	parsed, err := ParseStampedError(msg)
-	assert.Equal(t, err, nil, 1713685685422)
+	parsed := ParseStampedError(msg)
 
 	newMsg := parsed.Error()
 	assert.Equal(t, newMsg, msg, 1713685783298)
@@ -48,14 +46,12 @@ func TestParseStamedError_Case2(t *testing.T) {
 
 func TestParseStamedError_Case3(t *testing.T) {
 	err := NewData(1713606995137, "something went wrong", 30)
-	err = WrapData(1713607000211, err, true)
 	err = fmt.Errorf("i am a suspect error: %w", err)
 	err = WrapData(1713607005378, err, 1.560)
 	err = WrapData(1713607010089, err, "https://www.google.com")
 
 	msg := err.Error()
-	parsed, err := ParseStampedError(msg)
-	assert.Equal(t, err, nil, 1713685685422)
+	parsed := ParseStampedError(msg)
 
 	newMsg := parsed.Error()
 	assert.Equal(t, newMsg, msg, 1713685783298)
@@ -69,21 +65,19 @@ func TestGetStackFrames_Case1(t *testing.T) {
 	err = WrapData(1713607005378, err, 1.560)
 	err = WrapData(1713607010089, err, "https://www.google.com")
 
-	frames, err := GetStackFrames(err)
-	assert.Equal(t, err, nil, 1713684202503)
+	frames := GetStackFrames(err)
 	assert.Len(t, frames, 4)
 }
 
 func TestGetStackFrames_Case2(t *testing.T) {
 
 	err := NewData(1713606995137, "something went wrong", 30)
-	err = WrapData(1713607000211, err, true)
+	err = WrapData(1713607000211, err, []float32{1.5, 2.5})
 	err = fmt.Errorf("i am a suspect error: %w", err)
 	err = WrapData(1713607005378, err, 1.560)
 	err = WrapData(1713607010089, err, "https://www.google.com")
 
-	frames, err := GetStackFrames(err)
-	assert.Equal(t, err, nil, 1713684202503)
+	frames := GetStackFrames(err)
 	assert.Len(t, frames, 5)
 
 }

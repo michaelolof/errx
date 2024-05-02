@@ -14,6 +14,13 @@ func TryPanic(err error) {
 	}
 }
 
+func Split(err error) []error {
+	if uw, ok := err.(interface{ Unwrap() []error }); ok {
+		return uw.Unwrap()
+	}
+	return []error{err}
+}
+
 func Contains(err error, substr string) bool {
 	if err == nil {
 		return false
@@ -26,162 +33,253 @@ type StackFrame struct {
 	IsUnstamped bool
 	Stamp       int
 	Kind        error
-	Data        any
+	DataStr     string
 	Msg         string
-	FullMsg     string
 }
 
-func GetStackFrames(err error) ([]StackFrame, error) {
+func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
+	isUnstamped := false
+	stamp, err := strconv.Atoi(stampStr)
+	if err != nil {
+		isUnstamped = true
+	}
+
+	return StackFrame{
+		IsWrapper:   isWrapper,
+		IsUnstamped: isUnstamped,
+		Stamp:       stamp,
+		Kind:        errors.New(kindStr),
+		DataStr:     dataStr,
+		Msg:         strings.TrimSpace(msg),
+	}
+}
+
+func GetStackFrames(err error) []StackFrame {
 	return getStackFrames(err.Error())
 }
 
-func ParseStampedError(errString string) (error, error) {
+func ParseStampedError(errString string) error {
 
-	frames, err := getStackFrames(errString)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't get stack frames: %w", err)
-	}
+	frames := getStackFrames(errString)
 
 	var existingErr error
 	for i := len(frames) - 1; i >= 0; i-- {
 		frame := frames[i]
 
 		if !frame.IsWrapper && frame.IsUnstamped {
-			existingErr = errors.New(frame.FullMsg)
+			existingErr = errors.New(frame.Msg)
 		} else if !frame.IsWrapper {
-			existingErr = NewErr(frame.Stamp, frame.Msg, frame.Kind, frame.Data)
+			existingErr = newS(frame.Stamp, frame.Msg, frame.Kind, frame.DataStr)
 		} else if frame.IsWrapper && frame.IsUnstamped {
-			existingErr = fmt.Errorf("%s %w", frame.FullMsg, existingErr)
+			existingErr = fmt.Errorf("%s %w", frame.Msg, existingErr)
 		} else if existingErr != nil {
-			existingErr = WrapErr(frame.Stamp, existingErr, frame.Kind, frame.Data)
+			existingErr = wrapS(frame.Stamp, existingErr, frame.Kind, frame.DataStr)
 		}
 	}
 
-	return existingErr, nil
+	return existingErr
 }
 
-func getStackFrames(errString string) ([]StackFrame, error) {
+func getStackFrames(errStr string) []StackFrame {
 
-	extractFrames := func(str string) (*StackFrame, error) {
-		var stampStr, kindStr, dataStr string
-		parts := strings.Split(str, "[stamp ")
-		parts = strings.Split(parts[1], "]")
-		parts = strings.Split(parts[0], " kind ")
-		if len(parts) == 1 {
-			parts = strings.Split(parts[0], " data ")
-			stampStr = parts[0]
-			if len(parts) > 1 {
-				dataStr = parts[1]
-			}
-		} else {
-			stampStr = parts[0]
-			parts = strings.Split(parts[1], " data ")
-			if len(parts) > 0 {
-				kindStr = parts[0]
-			}
-			if len(parts) > 1 {
-				dataStr = parts[1]
-			}
-		}
-
-		stamp, err := strconv.Atoi(stampStr)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't parse stamp text to integer: %w", err)
-		}
-
-		var kind error
-		if kindStr != "" {
-			kind = errors.New(kindStr)
-		}
-
-		var data any
-		if dataStr != "" {
-			err = json.Unmarshal([]byte(dataStr), &data)
-			if err != nil {
-				return nil, fmt.Errorf("couldn't parse data string to any data: %w", err)
-			}
-		}
-
-		return &StackFrame{
-			Stamp: stamp,
-			Kind:  kind,
-			Data:  data,
-		}, nil
+	lex := newLexer(errStr)
+	tok := lex.nextToken()
+	for tok.typ != eof {
+		tok = lex.nextToken()
 	}
 
-	if !strings.HasPrefix(errString, "[stamp ") {
-		return nil, errors.New("unsupported error string. only stamped errors can be parsed")
+	tree := lex.list
+	frames := make([]StackFrame, 0, (len(errStr)/7)+1)
+	stampStr := ""
+	kindStr := ""
+	dataStr := ""
+	msg := ""
+
+	clearBuffer := func() {
+		stampStr = ""
+		kindStr = ""
+		dataStr = ""
+		msg = ""
 	}
 
-	strl := len(errString)
-	errs := make([]error, 0, (strl/21)+1)
-	frames := make([]StackFrame, 0, (strl/21)+1)
-
-	// We already know errString starts with [stamp
-	for pos := 0; pos < strl; pos++ {
-
-		wkstr := errString[pos:]
-
-		if pos > 0 && !strings.HasPrefix(wkstr, "[stamp ") {
-			// Look for the next stamp
-			nidx := strings.Index(wkstr, " [stamp ")
-			if nidx < 0 {
-				f := StackFrame{
-					IsWrapper:   false,
-					IsUnstamped: true,
-					FullMsg:     wkstr,
-				}
-				frames = append(frames, f)
-				break
-			} else {
-				f := StackFrame{
-					IsWrapper:   true,
-					IsUnstamped: true,
-					FullMsg:     wkstr[0:nidx],
-				}
-				frames = append(frames, f)
-				pos = pos + nidx
-				continue
-			}
-
+	for i := 0; i < len(tree); i++ {
+		tok := tree[i]
+		if ms := strings.TrimSpace(msg); len(ms) > 0 && tok.typ == openBrackets {
+			// A generic error message wrapping a stamped error
+			frames = append(frames, newStackFrame(true, "", "", "", ms))
+			clearBuffer()
 		}
 
-		// Find the next closing bracket index
-		idx := pos + strings.IndexAny(wkstr, "]")
-		rem := errString[pos : idx+1]
+		if tok.typ == wrapperDelimiter {
+			// A stamped error message wrapping another error
+			frames = append(frames, newStackFrame(true, stampStr, kindStr, dataStr, strings.TrimSpace(msg)))
+			clearBuffer()
+		}
 
-		// check if this is the end of an error instance
-		if strl > idx+2 {
-			next := errString[idx+1 : idx+3]
-			if next == "; " {
-				p, err := extractFrames(rem)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("couldn't parse wrapped error: %w", err))
-					continue
-				}
-				p.FullMsg = rem
-				p.IsWrapper = true
-				frames = append(frames, *p)
-				pos = idx + 2
-				continue
-			} else {
-				idx2 := strings.Index(errString[idx+1:], "; ")
-				if idx2 == -1 {
-					f, err := extractFrames(rem)
-					if err != nil {
-						errs = append(errs, fmt.Errorf("couldn't parse new error: %w", err))
-						break
-					}
-					msg := errString[idx+1:]
-					f.Msg = strings.TrimLeft(msg, " ")
-					f.IsWrapper = false
-					f.FullMsg = rem + msg
-					frames = append(frames, *f)
+		if tok.typ == stampDirective {
+			// Bring out stamp id
+			for {
+				nextToken := tree[i+1]
+				if nextToken.typ == closeBrackets || nextToken.typ == kindDirective || nextToken.typ == dataDirective {
 					break
 				}
+				stampStr = stampStr + nextToken.literal
+				i++
 			}
+		}
+
+		if tok.typ == kindDirective {
+			// Bring out kind error
+			for {
+				nextToken := tree[i+1]
+				if nextToken.typ == closeBrackets || nextToken.typ == dataDirective {
+					break
+				}
+				kindStr = kindStr + nextToken.literal
+				i++
+			}
+		}
+
+		if tok.typ == dataDirective {
+			// Bring out data value
+			for {
+				nextToken := tree[i+1]
+				if nextToken.typ == closeBrackets {
+					break
+				}
+				dataStr = dataStr + nextToken.literal
+				i++
+			}
+		}
+
+		if tok.typ == unknownToken {
+			// Append unknown characters
+			msg = msg + tok.literal
 		}
 	}
 
-	return frames, errors.Join(errs...)
+	frames = append(frames, newStackFrame(false, stampStr, kindStr, dataStr, msg))
+
+	return frames
+}
+
+func fromStr[T any](str string) (*T, error) {
+	var result any
+	var typeName string = fmt.Sprintf("%T", *new(T))
+
+	switch typeName {
+	case "int":
+		val, err := strconv.Atoi(str)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+
+	case "float32":
+		l, err := strconv.ParseFloat(str, 32)
+		if err != nil {
+			return nil, err
+		}
+		result = float32(l)
+
+	case "float64":
+		l, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return nil, err
+		}
+		result = l
+
+	case "string":
+		l, err := strconv.Unquote(str)
+		if err != nil {
+			return nil, err
+		}
+		result = l
+
+	case "[]int":
+		lstr := strings.Split(str[1:len(str)-1], ", ")
+		lint := make([]int, 0, len(lstr))
+		for _, v := range lstr {
+			val, err := strconv.Atoi(v)
+			if err != nil {
+				return nil, err
+			}
+			lint = append(lint, val)
+		}
+		result = lint
+
+	case "[]float32":
+		lstr := strings.Split(str[1:len(str)-1], ", ")
+		lint := make([]float32, 0, len(lstr))
+		for _, v := range lstr {
+			val, err := strconv.ParseFloat(v, 32)
+			if err != nil {
+				return nil, err
+			}
+			lint = append(lint, float32(val))
+		}
+		result = lint
+
+	case "[]float64":
+		lstr := strings.Split(str[1:len(str)-1], ", ")
+		lint := make([]float64, 0, len(lstr))
+		for _, v := range lstr {
+			val, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return nil, err
+			}
+			lint = append(lint, val)
+		}
+		result = lint
+
+	case "[]string":
+		var l []string
+		err := json.Unmarshal([]byte(str), &l)
+		if err != nil {
+			return nil, err
+		}
+		result = l
+
+	case "map[string]int":
+		ml := make(map[string]int)
+		err := json.Unmarshal([]byte(str), &ml)
+		if err != nil {
+			return nil, err
+		}
+		result = ml
+
+	case "map[string]float32":
+		ml := make(map[string]float32)
+		err := json.Unmarshal([]byte(str), &ml)
+		if err != nil {
+			return nil, err
+		}
+		result = ml
+
+	case "map[string]float64":
+		ml := make(map[string]float64)
+		err := json.Unmarshal([]byte(str), &ml)
+		if err != nil {
+			return nil, err
+		}
+		result = ml
+
+	case "map[string]string":
+		ml := make(map[string]string)
+		err := json.Unmarshal([]byte(str), &ml)
+		if err != nil {
+			return nil, err
+		}
+		result = ml
+
+	default:
+		return nil, fmt.Errorf("match not found for type '%s'", typeName)
+	}
+
+	rtn, ok := result.(T)
+	if !ok {
+		return nil, fmt.Errorf("error converting match value '%v' to type '%s'", result, typeName)
+	}
+
+	return &rtn, nil
 }
