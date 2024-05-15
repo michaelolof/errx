@@ -257,16 +257,17 @@ func (e Err[T]) Unwrap() error {
 // Unwraps the error retrieves the data values and returns the first one that matches the givent type
 func FindData[T DataType](err error) (*T, bool) {
 	for err != nil {
-		if se, ok := err.(Stamper[T]); ok {
-			data := se.Data()
+		switch t := err.(type) {
+		case Stamper[T]:
+			data := t.Data()
 			if data != nil {
 				return data, true
 			}
-		} else if se, ok := err.(Stamper[unknown]); ok {
-			data := se.DataStr()
+		case Stamper[unknown]:
+			data := t.DataStr()
 			if data != "" {
-				val, er := fromStr[T](data)
-				if er == nil {
+				val, err1 := fromStr[T](data)
+				if err1 == nil {
 					return val, true
 				}
 			}
@@ -280,19 +281,19 @@ func FindData[T DataType](err error) (*T, bool) {
 // Unwraps the error and retrieves the data values and returns the first one that matches the specified error kind and given type
 func FindDataByKind[T DataType](err error, kind error) (*T, bool) {
 	for err != nil {
-		if se, ok := err.(Stamper[T]); ok {
-			kindStr := se.KindStr()
-
+		switch t := err.(type) {
+		case Stamper[T]:
+			kindStr := t.KindStr()
 			if kindStr == kind.Error() {
-				data := se.Data()
+				data := t.Data()
 				if data != nil {
 					return data, true
 				}
 			}
-		} else if se, ok := err.(Stamper[unknown]); ok {
-			kindStr := se.KindStr()
+		case Stamper[unknown]:
+			kindStr := t.KindStr()
 			if kindStr == kind.Error() {
-				data := se.DataStr()
+				data := t.DataStr()
 				if data != "" {
 					var d T
 					err := json.Unmarshal([]byte(data), &d)
