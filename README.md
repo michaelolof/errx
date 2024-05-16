@@ -33,7 +33,7 @@ func failerOne() error {
 
 This will generate an error message that looks like this
 ```text
-[stamp 1712851695469] something went wrong
+[ts 1712851695469] something went wrong
 ```
 
 
@@ -54,7 +54,7 @@ func failerTwo() error {
 
 This will generate an error message that looks like this:
 ```txt
-[stamp 1712484857431]; [stamp 1712851695469] something went wrong
+[ts 1712484857431]; [ts 1712851695469] something went wrong
 ```
 
 **Note** that the timestamp is statically generated and hardcoded when calling the New(...) function. This allows them act as a trace id when locating the source of your errors

@@ -216,7 +216,7 @@ func TestUnwrap(t *testing.T) {
 				ast := assertions[count]
 				assert.Equal(t, v.Stamp(), ast.stamp, 1713701175536)
 				assert.Equal(t, v.KindStr(), ast.kindStr, 1713701191837)
-				assert.Equal(t, v.AnyData(), ast.data, 1713701188390)
+				assert.Equal(t, v.AnyData(), &ast.data, 1713701188390)
 			}
 			err = Unwrap(err)
 			count = count + 1
@@ -241,7 +241,7 @@ func TestUnwrap(t *testing.T) {
 				ast := assertions[count]
 				assert.Equal(t, v.Stamp(), ast.stamp)
 				assert.Equal(t, v.KindStr(), ast.kindStr)
-				assert.Equal(t, v.AnyData(), ast.data)
+				assert.Equal(t, v.AnyData(), &ast.data)
 
 				count = count + 1
 			}

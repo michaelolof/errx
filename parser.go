@@ -41,18 +41,20 @@ func (l *lexer) nextToken() token {
 			tok.typ = rBrackets
 		}
 	case ';':
+		// preText := l.peekBehind(1)
 		postText := l.peekAhead(2)
+		// if preText == "]" && postText == "; " {
 		if postText == "; " {
 			tok.literal = currStr
 			tok.typ = wrapperDelimiter
 		}
-	case 's':
+	case 't':
 		preText := l.peekBehind(1)
-		postText := l.peekAhead(6)
-		if preText == "[" && postText == "stamp " {
+		postText := l.peekAhead(3)
+		if preText == "[" && postText == "ts " {
 			tok.typ = stampDirective
-			tok.literal = "stamp"
-			l.moveCursor(6)
+			tok.literal = "ts"
+			l.moveCursor(3)
 		} else {
 			tok.literal = currStr
 			tok.typ = unknownToken

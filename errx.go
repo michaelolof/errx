@@ -186,17 +186,17 @@ func (e *Err[T]) buildErr(wrapErr error) error {
 	var details string
 
 	if e.kindStr != "" && e.data != nil {
-		details = fmt.Sprintf("[stamp %d kind %s data %s]", e.stamp, e.kindStr, toStr(*e.data))
+		details = fmt.Sprintf("[ts %d kind %s data %s]", e.stamp, e.kindStr, toStr(*e.data))
 	} else if e.kindStr != "" && e.dataStr != "" {
-		details = fmt.Sprintf("[stamp %d kind %s data %s]", e.stamp, e.kindStr, e.dataStr)
+		details = fmt.Sprintf("[ts %d kind %s data %s]", e.stamp, e.kindStr, e.dataStr)
 	} else if e.kindStr != "" && e.data == nil {
-		details = fmt.Sprintf("[stamp %d kind %s]", e.stamp, e.kindStr)
+		details = fmt.Sprintf("[ts %d kind %s]", e.stamp, e.kindStr)
 	} else if e.data != nil && e.kindStr == "" {
-		details = fmt.Sprintf("[stamp %d data %s]", e.stamp, toStr(*e.data))
+		details = fmt.Sprintf("[ts %d data %s]", e.stamp, toStr(*e.data))
 	} else if e.dataStr != "" && e.kindStr == "" {
-		details = fmt.Sprintf("[stamp %d data %s]", e.stamp, e.dataStr)
+		details = fmt.Sprintf("[ts %d data %s]", e.stamp, e.dataStr)
 	} else {
-		details = fmt.Sprintf("[stamp %d]", e.stamp)
+		details = fmt.Sprintf("[ts %d]", e.stamp)
 	}
 
 	if wrapErr == nil && e.msg != "" {
@@ -209,6 +209,10 @@ func (e *Err[T]) buildErr(wrapErr error) error {
 
 func (e *Err[T]) Error() string {
 	return e.err.Error()
+}
+
+func (e *Err[T]) Msg() string {
+	return e.msg
 }
 
 func (e *Err[T]) Is(target error) bool {
@@ -247,6 +251,19 @@ func (e *Err[T]) KindStr() string {
 
 func (e *Err[T]) Stamp() int {
 	return e.stamp
+}
+
+func (e *Err[T]) Traces() []int {
+
+	var err error = e
+	ts := make([]int, 0, 10)
+	for err != nil {
+		if e, ok := err.(interface{ Stamp() int }); ok {
+			ts = append(ts, e.Stamp())
+		}
+		err = Unwrap(err)
+	}
+	return ts
 }
 
 // Adds support for [errors.Unwrap] function
@@ -311,14 +328,18 @@ func FindDataByKind[T DataType](err error, kind error) (*T, bool) {
 }
 
 type AnyStamper interface {
+	Msg() string
 	Stamp() int
-	AnyData() any
+	Traces() []int
+	AnyData() *any
 	DataStr() string
 	KindStr() string
 }
 
 type Stamper[T DataType] interface {
+	Msg() string
 	Stamp() int
+	Traces() []int
 	Data() *T
 	DataStr() string
 	KindStr() string

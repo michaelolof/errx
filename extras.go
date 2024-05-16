@@ -28,32 +28,6 @@ func Contains(err error, substr string) bool {
 	return strings.Contains(err.Error(), substr)
 }
 
-type StackFrame struct {
-	IsWrapper   bool
-	IsUnstamped bool
-	Stamp       int
-	Kind        error
-	DataStr     string
-	Msg         string
-}
-
-func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
-	isUnstamped := false
-	stamp, err := strconv.Atoi(stampStr)
-	if err != nil {
-		isUnstamped = true
-	}
-
-	return StackFrame{
-		IsWrapper:   isWrapper,
-		IsUnstamped: isUnstamped,
-		Stamp:       stamp,
-		Kind:        errors.New(kindStr),
-		DataStr:     dataStr,
-		Msg:         strings.TrimSpace(msg),
-	}
-}
-
 func GetStackFrames(err error) []StackFrame {
 	return getStackFrames(err.Error())
 }
@@ -78,6 +52,90 @@ func ParseStampedError(errString string) error {
 	}
 
 	return existingErr
+}
+
+func Cause(err error) error {
+	var e error
+	for err != nil {
+		e = Unwrap(err)
+		if e == nil {
+			return err
+		} else {
+			err = e
+		}
+	}
+	return err
+}
+
+type report struct {
+	Msg    string
+	Traces []int
+	Kind   string
+}
+
+func (r *report) Error() string {
+	return r.Msg
+}
+
+func newReport(msg string, traces []int, kind string) report {
+	return report{
+		Msg:    msg,
+		Traces: traces,
+		Kind:   kind,
+	}
+}
+
+func Report(err error) report {
+	var msg string
+	traces := make([]int, 0, 10)
+	var kind string
+
+	for err != nil {
+		if v, ok := err.(AnyStamper); ok {
+			msg = v.Msg()
+			traces = append(traces, v.Stamp())
+			k := v.KindStr()
+			if k != "" && kind == "" {
+				kind = k
+			}
+
+		} else {
+			m := err.Error()
+			if !strings.HasPrefix(m, "[ts ") {
+				msg = m
+			}
+		}
+
+		err = Unwrap(err)
+	}
+
+	return newReport(msg, traces, kind)
+}
+
+type StackFrame struct {
+	IsWrapper   bool
+	IsUnstamped bool
+	Stamp       int
+	Kind        error
+	DataStr     string
+	Msg         string
+}
+
+func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
+	isUnstamped := false
+	stamp, err := strconv.Atoi(stampStr)
+	if err != nil {
+		isUnstamped = true
+	}
+
+	return StackFrame{
+		IsWrapper:   isWrapper,
+		IsUnstamped: isUnstamped,
+		Stamp:       stamp,
+		Kind:        errors.New(kindStr),
+		DataStr:     dataStr,
+		Msg:         strings.TrimSpace(msg),
+	}
 }
 
 func getStackFrames(errStr string) []StackFrame {

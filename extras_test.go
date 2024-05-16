@@ -50,6 +50,9 @@ func TestParseStamedError_Case3(t *testing.T) {
 	err = WrapData(1713607005378, err, 1.560)
 	err = WrapData(1713607010089, err, "https://www.google.com")
 
+	rep := Report(err)
+	fmt.Println(rep)
+
 	msg := err.Error()
 	parsed := ParseStampedError(msg)
 
@@ -80,4 +83,28 @@ func TestGetStackFrames_Case2(t *testing.T) {
 	frames := GetStackFrames(err)
 	assert.Len(t, frames, 5)
 
+}
+
+func TestCause_Case1(t *testing.T) {
+
+	err1 := New(1715845918044, "something went wrong")
+	err := Wrap(1715845936107, err1)
+	err = Wrap(1715845950562, err)
+	err = Wrap(1715845961777, err)
+
+	err = Cause(err)
+
+	assert.Equal(t, err.Error(), err1.Error())
+}
+
+func TestReport_Case1(t *testing.T) {
+	err := New(1715845918044, "something went wrong")
+	err = Wrap(1715845936107, err)
+	err = Wrap(1715845950562, err)
+	err = Wrap(1715845961777, err)
+
+	rep := Report(err)
+
+	assert.Equal(t, rep.Msg, "something went wrong")
+	assert.Equal(t, rep.Traces, []int{1715845961777, 1715845950562, 1715845936107, 1715845918044})
 }
