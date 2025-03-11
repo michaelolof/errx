@@ -26,7 +26,7 @@ import "github.com/michaelolof/errx"
 
 func failerOne() error {
     ...
-    return errx.New(1712851695469, "something went wrong")
+    return errx.New(1712851695468, "something went wrong")
     ...
 }
 ```
