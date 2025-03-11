@@ -1,346 +1,187 @@
 package errx
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 )
 
-var (
-	ErrUnsupported = errors.ErrUnsupported
-)
+type ErrKind string
 
-type dataVals interface {
+type StampedErr interface {
+	Msg() string
+	Stamp() int
+	Kind() ErrKind
 }
 
-type Map[T dataVals] struct {
-	mp map[string]T
+type errx struct {
+	ts   int
+	data dataValue
+	kind ErrKind
+	msg  string
+	err  error
+	errx *errx
 }
 
-func NewMap[T dataVals](mp map[string]T) Map[T] {
-	return Map[T]{mp: mp}
+// Implements the error interface by returning the error string
+func (e *errx) Error() string {
+	return buildErrx(e).Error()
 }
 
-func (m *Map[T]) String() string {
-	return fmt.Sprintf("%v", m.mp)
+// Returns the string representation of the errx object.
+func (e *errx) String() string {
+	return e.Error()
 }
 
-type unknown struct{}
-
-type DataType interface {
-	unknown |
-		int | float32 | float64 | string |
-		[]int | []float32 | []float64 | []string |
-		map[string]int | map[string]float32 | map[string]float64 | map[string]string
+// Returns the error message.
+func (e *errx) Msg() string {
+	return e.msg
 }
 
-type Err[T DataType] struct {
-	msg     string
-	stamp   int
-	kindStr string
-	data    *T
-	dataStr string
-	err     error
-}
-
-func newE[T DataType](ts int, msg string, kind error, data *T) error {
-	var kindStr string
-	if kind != nil {
-		kindStr = kind.Error()
+// Unwraps the error object.
+func (e *errx) Unwrap() error {
+	if e.errx != nil {
+		return e.errx
+	} else if e.err != nil {
+		return e.err
+	} else {
+		return nil
 	}
+}
 
-	err := &Err[T]{
-		stamp:   ts,
-		msg:     msg,
-		kindStr: kindStr,
-		data:    data,
-	}
-
-	err.err = err.buildErr(nil)
-
-	go func() {
-		if _logger != nil {
-			_logger(err)
+// Returns the list of stamp traces for a given error.
+func (e *errx) Traces() []int {
+	rtn := make([]int, 0, 15)
+	for {
+		if err := e.Unwrap(); err != nil {
+			if v, ok := err.(interface{ Stamp() int }); ok {
+				rtn = append(rtn, v.Stamp())
+			}
+		} else {
+			break
 		}
-	}()
-
-	return err
+	}
+	return rtn
 }
 
-func wrapE[T DataType](ts int, err error, kind error, data *T) error {
-	var kindStr string
-	if kind != nil {
-		kindStr = kind.Error()
-	}
-
-	inst := &Err[T]{
-		stamp:   ts,
-		kindStr: kindStr,
-		data:    data,
-	}
-
-	inst.err = inst.buildErr(err)
-
-	go func() {
-		if _logger != nil {
-			_logger(inst)
-		}
-	}()
-
-	return inst
+// Returns the error interface for the errx instance
+func (e *errx) Err() error {
+	return e
 }
 
-func newS(ts int, msg string, kind error, dataStr string) error {
-	var kindStr string
-	if kind != nil {
-		kindStr = kind.Error()
-	}
-
-	err := &Err[unknown]{
-		stamp:   ts,
-		msg:     msg,
-		kindStr: kindStr,
-		dataStr: dataStr,
-	}
-
-	err.err = err.buildErr(nil)
-
-	go func() {
-		if _logger != nil {
-			_logger(err)
-		}
-	}()
-
-	return err
+// Returns the error stamp for the given error
+func (e *errx) Stamp() int {
+	return e.ts
 }
 
-func wrapS(ts int, err error, kind error, dataStr string) error {
-	var kindStr string
-	if kind != nil {
-		kindStr = kind.Error()
+// Returns the kind of error it is
+func (e *errx) Kind() ErrKind {
+	return e.kind
+}
+
+// Add an error kind to your error object.
+func (e *errx) WithKind(kind ErrKind) *errx {
+	e.kind = kind
+	return e
+}
+
+// Add data to your error object using the error kind as a key
+func (e *errx) WithData(kind ErrKind, data dataValue) *errx {
+	e.kind = kind
+	e.data = data
+	return e
+}
+
+// Create a new errx instance and add properties to it using the builder pattern.
+func NewErr(ts int, msg string) *errx {
+	return &errx{ts: ts, msg: msg}
+}
+
+// Wraps am existing error into a new errx instance and add properties to it using the builder pattern.
+func WrapErr(ts int, err error) *errx {
+	switch e := err.(type) {
+	case *errx:
+		return &errx{ts: ts, errx: e}
+	default:
+		return &errx{ts: ts, err: err}
 	}
-
-	inst := &Err[unknown]{
-		stamp:   ts,
-		kindStr: kindStr,
-		dataStr: dataStr,
-	}
-
-	inst.err = inst.buildErr(err)
-
-	go func() {
-		if _logger != nil {
-			_logger(inst)
-		}
-	}()
-
-	return inst
 }
 
 // New returns an error given a timestamp and error message.
 func New(ts int, msg string) error {
-	return newE[unknown](ts, msg, nil, nil)
+	return NewErr(ts, msg)
 }
 
 // Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
 func Wrap(ts int, err error) error {
-	return wrapE[unknown](ts, err, nil, nil)
-}
-
-// NewData returns a timestamped error given the timestamp, message and a data value of type T
-func NewData[T DataType](ts int, msg string, data T) error {
-	return newE(ts, msg, nil, &data)
-}
-
-// WrapData wraps an existing error given the timestamp, and a data value of type T
-func WrapData[T DataType](ts int, err error, data T) error {
-	return wrapE(ts, err, nil, &data)
+	return WrapErr(ts, err)
 }
 
 // NewF returns a timestamped error with the message formatted according to a format specifier.
 func Newf(ts int, msg string, a ...any) error {
-	return newE[unknown](ts, fmt.Sprintf(msg, a...), nil, nil)
-}
-
-// NewErr returns a timestamped error given the timestamp, error kind, message and a data value of type T
-func NewErr[T DataType](ts int, msg string, kind error, data T) error {
-	return newE(ts, msg, kind, &data)
-}
-
-// WrapErr wraps an existing error given the timestamp, error kind, and a data value of type T
-func WrapErr[T DataType](ts int, err error, kind error, data T) error {
-	return wrapE(ts, err, kind, &data)
+	return NewErr(ts, fmt.Sprintf(msg, a...))
 }
 
 // NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
-func NewKind(ts int, msg string, kind error) error {
-	return newE[unknown](ts, msg, kind, nil)
+func NewKind(ts int, msg string, kind ErrKind) error {
+	return NewErr(ts, msg).WithKind(kind)
 }
 
 // WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
-func WrapKind(ts int, err error, kind error) error {
-	return wrapE[unknown](ts, err, kind, nil)
+func WrapKind(ts int, err error, kind ErrKind) error {
+	return WrapErr(ts, err).WithKind(kind)
 }
 
-func (e *Err[T]) buildErr(wrapErr error) error {
+// NewDatareturns a timestamped error given the timestamp, error kind, message and a data value
+func NewData(ts int, msg string, kind ErrKind, data dataValue) error {
+	return NewErr(ts, msg).WithData(kind, data)
+}
+
+// WrapData wraps an existing error given the timestamp, error kind, and a data value
+func WrapData(ts int, err error, kind ErrKind, data dataValue) error {
+	return WrapErr(ts, err).WithData(kind, data)
+}
+
+func buildErrx(e *errx) error {
 	var details string
 
-	if e.kindStr != "" && e.data != nil {
-		details = fmt.Sprintf("[ts %d kind %s data %s]", e.stamp, e.kindStr, toStr(*e.data))
-	} else if e.kindStr != "" && e.dataStr != "" {
-		details = fmt.Sprintf("[ts %d kind %s data %s]", e.stamp, e.kindStr, e.dataStr)
-	} else if e.kindStr != "" && e.data == nil {
-		details = fmt.Sprintf("[ts %d kind %s]", e.stamp, e.kindStr)
-	} else if e.data != nil && e.kindStr == "" {
-		details = fmt.Sprintf("[ts %d data %s]", e.stamp, toStr(*e.data))
-	} else if e.dataStr != "" && e.kindStr == "" {
-		details = fmt.Sprintf("[ts %d data %s]", e.stamp, e.dataStr)
-	} else {
-		details = fmt.Sprintf("[ts %d]", e.stamp)
+	if e.kind != "" && e.data.isSet {
+		details = fmt.Sprintf("[ts %d kind %s data %s]", e.ts, e.kind, e.data.String())
+	} else if e.kind != "" && !e.data.isSet {
+		details = fmt.Sprintf("[ts %d kind %s]", e.ts, e.kind)
+	} else if e.data.isSet && e.kind == "" {
+		details = fmt.Sprintf("[ts %d data %s]", e.ts, e.data.String())
+	} else if e.ts != 0 {
+		details = fmt.Sprintf("[ts %d]", e.ts)
 	}
 
-	if wrapErr == nil && e.msg != "" {
+	if e.errx != nil {
+		return fmt.Errorf("%s; %s", details, buildErrx(e.errx).Error())
+	} else if e.err != nil {
+		return fmt.Errorf("%s; %s", details, e.err.Error())
+	} else if details != "" {
 		return fmt.Errorf("%s %s", details, e.msg)
-	} else if wrapErr != nil {
-		return fmt.Errorf("%s; %w", details, wrapErr)
-	}
-	return nil
-}
-
-func (e *Err[T]) Error() string {
-	return e.err.Error()
-}
-
-func (e *Err[T]) Msg() string {
-	return e.msg
-}
-
-func (e *Err[T]) Is(target error) bool {
-	itis := errors.Is(e.err, target)
-	if itis {
-		return itis
 	} else {
-		return e.err.Error() == target.Error()
+		return fmt.Errorf("%s", e.msg)
+	}
+
+}
+
+type dataValue struct {
+	isSet  bool
+	val    any
+	valStr string
+}
+
+func (d *dataValue) String() string {
+	if d.isSet && d.valStr != "" {
+		return d.valStr
+	} else if d.isSet && d.val != nil {
+		return toStr(d.val)
+	} else {
+		return ""
 	}
 }
 
-func (e *Err[T]) DataStr() string {
-	return e.dataStr
-}
-
-func (e *Err[T]) Data() *T {
-	return e.data
-}
-
-func (e *Err[T]) AnyData() *any {
-	var val any
-	data := e.Data()
-	if data != nil {
-		val = *data
-	}
-
-	return &val
-}
-
-func (e *Err[T]) KindStr() string {
-	if e.kindStr != "" {
-		return e.kindStr
-	}
-	return ""
-}
-
-func (e *Err[T]) Stamp() int {
-	return e.stamp
-}
-
-func (e *Err[T]) Traces() []int {
-
-	var err error = e
-	ts := make([]int, 0, 10)
-	for err != nil {
-		if e, ok := err.(interface{ Stamp() int }); ok {
-			ts = append(ts, e.Stamp())
-		}
-		err = Unwrap(err)
-	}
-	return ts
-}
-
-// Adds support for [errors.Unwrap] function
-func (e Err[T]) Unwrap() error {
-	return errors.Unwrap(e.err)
-}
-
-// Unwraps the error retrieves the data values and returns the first one that matches the givent type
-func FindData[T DataType](err error) (*T, bool) {
-	for err != nil {
-		switch t := err.(type) {
-		case Stamper[T]:
-			data := t.Data()
-			if data != nil {
-				return data, true
-			}
-		case Stamper[unknown]:
-			data := t.DataStr()
-			if data != "" {
-				val, err1 := fromStr[T](data)
-				if err1 == nil {
-					return val, true
-				}
-			}
-		}
-		err = Unwrap(err)
-	}
-
-	return nil, false
-}
-
-// Unwraps the error and retrieves the data values and returns the first one that matches the specified error kind and given type
-func FindDataByKind[T DataType](err error, kind error) (*T, bool) {
-	for err != nil {
-		switch t := err.(type) {
-		case Stamper[T]:
-			kindStr := t.KindStr()
-			if kindStr == kind.Error() {
-				data := t.Data()
-				if data != nil {
-					return data, true
-				}
-			}
-		case Stamper[unknown]:
-			kindStr := t.KindStr()
-			if kindStr == kind.Error() {
-				data := t.DataStr()
-				if data != "" {
-					var d T
-					err := json.Unmarshal([]byte(data), &d)
-					if err == nil {
-						return &d, true
-					}
-				}
-			}
-		}
-
-		err = Unwrap(err)
-	}
-
-	return nil, false
-}
-
-type AnyStamper interface {
-	Msg() string
-	Stamp() int
-	Traces() []int
-	AnyData() *any
-	DataStr() string
-	KindStr() string
-}
-
-type Stamper[T DataType] interface {
-	Msg() string
-	Stamp() int
-	Traces() []int
-	Data() *T
-	DataStr() string
-	KindStr() string
+// Define a datavalue based on the DataYype constraint.
+func Data[T DataType](val T) dataValue {
+	return dataValue{val: val, isSet: true}
 }

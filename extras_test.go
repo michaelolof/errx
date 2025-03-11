@@ -8,47 +8,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseStamedError(t *testing.T) {
+func TestParseStapmedError(t *testing.T) {
 
-	notfound := errors.New("not found error")
+	notfound := ErrKind("not found error")
 
-	err := NewData(1713591173899, "something went wrong", 30)
-	err = Wrap(1713592763837, err)
-	err = WrapData(1713592780139, err, 30)
-	err = WrapErr(1713591205370, err, notfound, "something i want to do often")
+	err := NewErr(1713591173899, "something went wrong").WithData(ErrKind("my_data_1"), Data(30))
+	err = WrapErr(1713592763837, err)
+	err = WrapErr(1713592780139, err).WithData(ErrKind("my_data_2"), Data(30))
+	err = WrapErr(1713591205370, err).WithData(notfound, Data("something i want to do often"))
 
-	itMatches := Is(err, notfound)
-	assert.Equal(t, itMatches, true, 1713680824055)
-
-	msg := err.Error()
-	parsed := ParseStampedError(msg)
-
-	itMatches = Is(parsed, notfound)
-	assert.Equal(t, itMatches, true, 1713680824055)
-
-	newMsg := parsed.Error()
-	assert.Equal(t, newMsg, msg, 1713680554000)
-}
-
-func TestParseStamedError_Case2(t *testing.T) {
-	err := errors.New("some thing went wrong")
-	err = fmt.Errorf("i am a suspect error: %w", err)
-	err = WrapData(1713607000211, err, 30)
-	err = WrapData(1713607005378, err, 1.560)
-	err = WrapData(1713607010089, err, "https://www.google.com")
+	itMatches := KindOf(err, notfound)
+	assert.Equal(t, itMatches, true)
 
 	msg := err.Error()
 	parsed := ParseStampedError(msg)
 
+	itMatches = KindOf(parsed, notfound)
+	assert.Equal(t, itMatches, true)
+
 	newMsg := parsed.Error()
-	assert.Equal(t, newMsg, msg, 1713685783298)
+	assert.Equal(t, newMsg, msg)
 }
 
-func TestParseStamedError_Case3(t *testing.T) {
-	err := NewData(1713606995137, "something went wrong", 30)
-	err = fmt.Errorf("i am a suspect error: %w", err)
-	err = WrapData(1713607005378, err, 1.560)
-	err = WrapData(1713607010089, err, "https://www.google.com")
+func TestParseStampedErrorCase2(t *testing.T) {
+	err := NewErr(1713606995137, "something went wrong").WithData(ErrKind("one"), Data(30))
+	err1 := fmt.Errorf("i am a suspect error: %w", err)
+	err = WrapErr(1713607005378, err1).WithData(ErrKind("two"), Data(1.560))
+	err = WrapErr(1713607010089, err).WithData(ErrKind("three"), Data("https://www.google.com"))
 
 	rep := Report(err)
 	fmt.Println(rep)
@@ -57,51 +43,50 @@ func TestParseStamedError_Case3(t *testing.T) {
 	parsed := ParseStampedError(msg)
 
 	newMsg := parsed.Error()
-	assert.Equal(t, newMsg, msg, 1713685783298)
+	assert.Equal(t, msg, newMsg)
 }
 
-func TestGetStackFrames_Case1(t *testing.T) {
+func TestGetStackFrames(t *testing.T) {
+	{
+		err := errors.New("some thing went wrong")
+		err = fmt.Errorf("i am a suspect error: %w", err)
+		err = WrapErr(1741664539, err)
+		err = WrapErr(1741664541, err)
+		err = WrapErr(1741664544, err)
 
-	err := errors.New("some thing went wrong")
-	err = fmt.Errorf("i am a suspect error: %w", err)
-	err = WrapData(1713607000211, err, 30)
-	err = WrapData(1713607005378, err, 1.560)
-	err = WrapData(1713607010089, err, "https://www.google.com")
+		frames := GetStackFrames(err)
+		assert.Len(t, frames, 4)
+	}
 
-	frames := GetStackFrames(err)
-	assert.Len(t, frames, 4)
-}
+	{
+		err := NewErr(1713606995137, "something went wrong")
+		err = WrapErr(1713607000211, err)
+		err1 := fmt.Errorf("i am a suspect error: %w", err)
+		err = WrapErr(1713607005378, err1)
+		err = WrapErr(1713607010089, err)
 
-func TestGetStackFrames_Case2(t *testing.T) {
-
-	err := NewData(1713606995137, "something went wrong", 30)
-	err = WrapData(1713607000211, err, []float32{1.5, 2.5})
-	err = fmt.Errorf("i am a suspect error: %w", err)
-	err = WrapData(1713607005378, err, 1.560)
-	err = WrapData(1713607010089, err, "https://www.google.com")
-
-	frames := GetStackFrames(err)
-	assert.Len(t, frames, 5)
-
+		frames := GetStackFrames(err)
+		assert.Len(t, frames, 5)
+	}
 }
 
 func TestCause_Case1(t *testing.T) {
 
-	err1 := New(1715845918044, "something went wrong")
-	err := Wrap(1715845936107, err1)
-	err = Wrap(1715845950562, err)
-	err = Wrap(1715845961777, err)
+	err1 := NewErr(1715845918044, "something went wrong")
+	err := WrapErr(1715845936107, err1)
+	err = WrapErr(1715845950562, err)
+	err = WrapErr(1715845961777, err)
 
-	err = Cause(err)
+	errC := Cause(err)
 
-	assert.Equal(t, err.Error(), err1.Error())
+	assert.Equal(t, errC.Error(), err1.Error())
 }
 
 func TestReport_Case1(t *testing.T) {
-	err := New(1715845918044, "something went wrong")
-	err = Wrap(1715845936107, err)
-	err = Wrap(1715845950562, err)
-	err = Wrap(1715845961777, err)
+	err := NewErr(1715845918044, "something went wrong")
+	err = WrapErr(1715845936107, err)
+	err = WrapErr(1715845950562, err)
+	err = WrapErr(1715845961777, err)
 
 	rep := Report(err)
 

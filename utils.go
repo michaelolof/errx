@@ -12,7 +12,7 @@ func arrPop[T any](alist *[]T) T {
 	return rv
 }
 
-func toStr[T DataType](data T) string {
+func toStr(data any) string {
 	convs := strings.Split(fmt.Sprintf("%T <<<]@@@^&!@@@[>>> %#v", data, data), " <<<]@@@^&!@@@[>>> ")
 
 	switch convs[0] {

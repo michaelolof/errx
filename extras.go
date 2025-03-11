@@ -32,26 +32,40 @@ func GetStackFrames(err error) []StackFrame {
 	return getStackFrames(err.Error())
 }
 
-func ParseStampedError(errString string) error {
+func ParseStampedError(errString string) *errx {
 
 	frames := getStackFrames(errString)
 
-	var existingErr error
+	var existinge error
+	var existingErr *errx
 	for i := len(frames) - 1; i >= 0; i-- {
 		frame := frames[i]
 
-		if !frame.IsWrapper && frame.IsUnstamped {
-			existingErr = errors.New(frame.Msg)
-		} else if !frame.IsWrapper {
-			existingErr = newS(frame.Stamp, frame.Msg, frame.Kind, frame.DataStr)
-		} else if frame.IsWrapper && frame.IsUnstamped {
-			existingErr = fmt.Errorf("%s %w", frame.Msg, existingErr)
-		} else if existingErr != nil {
-			existingErr = wrapS(frame.Stamp, existingErr, frame.Kind, frame.DataStr)
+		switch true {
+		case frame.IsStamped && !frame.IsWrapper:
+			existingErr = NewErr(frame.Stamp, frame.Msg).WithData(frame.Kind, frame.data)
+			existinge = nil
+		case frame.IsStamped && frame.IsWrapper:
+			if existinge != nil {
+				existingErr = WrapErr(frame.Stamp, existinge).WithData(frame.Kind, frame.data)
+				existinge = nil
+			} else {
+				existingErr = WrapErr(frame.Stamp, existingErr).WithData(frame.Kind, frame.data)
+			}
+		case !frame.IsStamped && frame.IsWrapper:
+			existinge = fmt.Errorf("%s %w", frame.Msg, existingErr)
+			existingErr = nil
+		case !frame.IsStamped && frame.IsWrapper:
+			existinge = errors.New(frame.Msg)
+			existingErr = nil
 		}
 	}
 
-	return existingErr
+	if existingErr != nil {
+		return existingErr
+	} else {
+		return &errx{err: existinge}
+	}
 }
 
 func Cause(err error) error {
@@ -70,14 +84,14 @@ func Cause(err error) error {
 type report struct {
 	Msg    string
 	Traces []int
-	Kind   string
+	Kind   ErrKind
 }
 
 func (r *report) Error() string {
 	return r.Msg
 }
 
-func newReport(msg string, traces []int, kind string) report {
+func newReport(msg string, traces []int, kind ErrKind) report {
 	return report{
 		Msg:    msg,
 		Traces: traces,
@@ -88,13 +102,13 @@ func newReport(msg string, traces []int, kind string) report {
 func Report(err error) report {
 	var msg string
 	traces := make([]int, 0, 10)
-	var kind string
+	var kind ErrKind
 
 	for err != nil {
-		if v, ok := err.(AnyStamper); ok {
+		if v, ok := err.(StampedErr); ok {
 			msg = v.Msg()
 			traces = append(traces, v.Stamp())
-			k := v.KindStr()
+			k := v.Kind()
 			if k != "" && kind == "" {
 				kind = k
 			}
@@ -113,12 +127,12 @@ func Report(err error) report {
 }
 
 type StackFrame struct {
-	IsWrapper   bool
-	IsUnstamped bool
-	Stamp       int
-	Kind        error
-	DataStr     string
-	Msg         string
+	IsWrapper bool
+	IsStamped bool
+	Stamp     int
+	Kind      ErrKind
+	data      dataValue
+	Msg       string
 }
 
 func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
@@ -128,13 +142,18 @@ func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string
 		isUnstamped = true
 	}
 
+	var data dataValue
+	if dataStr != "" {
+		data = dataValue{valStr: dataStr, isSet: true}
+	}
+
 	return StackFrame{
-		IsWrapper:   isWrapper,
-		IsUnstamped: isUnstamped,
-		Stamp:       stamp,
-		Kind:        errors.New(kindStr),
-		DataStr:     dataStr,
-		Msg:         strings.TrimSpace(msg),
+		IsWrapper: isWrapper,
+		IsStamped: !isUnstamped,
+		Stamp:     stamp,
+		Kind:      ErrKind(kindStr),
+		data:      data,
+		Msg:       strings.TrimSpace(msg),
 	}
 }
 
@@ -217,7 +236,6 @@ func getStackFrames(errStr string) []StackFrame {
 	}
 
 	frames = append(frames, newStackFrame(false, stampStr, kindStr, dataStr, msg))
-
 	return frames
 }
 
