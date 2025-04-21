@@ -12,19 +12,21 @@ type DataType interface {
 }
 
 // Unwraps the error and retrieves the data values and returns the first one that matches the specified error kind and given type
-func FindData[T DataType](kind ErrKind, err error) (*T, bool) {
+func FindData[T DataType](kind func(T) errKind, err error) (*T, bool) {
+	var dv T
+	k := kind(dv)
 	for err != nil {
 		switch t := err.(type) {
 		case *errx:
-			if kind == t.kind && t.data.isSet && t.data.val != nil {
-				if v, ok := t.data.val.(T); ok {
+			if k.kind == t.kind.kind && t.kind.data.isSet && t.kind.data.val != nil {
+				if v, ok := t.kind.data.val.(T); ok {
 					return &v, true
 				} else {
 					return nil, false
 				}
-			} else if kind == t.kind && t.data.isSet && t.data.valStr != "" {
+			} else if k.kind == t.kind.kind && t.kind.data.isSet && t.kind.data.valStr != "" {
 				var d T
-				if err := json.Unmarshal([]byte(t.data.valStr), &d); err == nil {
+				if err := json.Unmarshal([]byte(t.kind.data.valStr), &d); err == nil {
 					return &d, true
 				} else {
 					return nil, false

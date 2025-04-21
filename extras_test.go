@@ -10,20 +10,20 @@ import (
 
 func TestParseStapmedError(t *testing.T) {
 
-	notfound := ErrKind("not found error")
+	notfound := DataKind[string]("not found error")
 
-	err := NewErr(1713591173899, "something went wrong").WithData(ErrKind("my_data_1"), Data(30))
+	err := NewErr(1713591173899, "something went wrong").WithKind(DataKind[int]("my_data_1")(30))
 	err = WrapErr(1713592763837, err)
-	err = WrapErr(1713592780139, err).WithData(ErrKind("my_data_2"), Data(30))
-	err = WrapErr(1713591205370, err).WithData(notfound, Data("something i want to do often"))
+	err = WrapErr(1713592780139, err).WithKind(DataKind[int]("my_data_2")(30))
+	err = WrapErr(1713591205370, err).WithKind(notfound("something i want to do often"))
 
-	itMatches := KindOf(err, notfound)
+	itMatches := IsDataKind(err, notfound)
 	assert.Equal(t, itMatches, true)
 
 	msg := err.Error()
 	parsed := ParseStampedError(msg)
 
-	itMatches = KindOf(parsed, notfound)
+	itMatches = IsDataKind(parsed, notfound)
 	assert.Equal(t, itMatches, true)
 
 	newMsg := parsed.Error()
@@ -31,10 +31,10 @@ func TestParseStapmedError(t *testing.T) {
 }
 
 func TestParseStampedErrorCase2(t *testing.T) {
-	err := NewErr(1713606995137, "something went wrong").WithData(ErrKind("one"), Data(30))
+	err := NewErr(1713606995137, "something went wrong").WithKind(DataKind[int]("one")(30))
 	err1 := fmt.Errorf("i am a suspect error: %w", err)
-	err = WrapErr(1713607005378, err1).WithData(ErrKind("two"), Data(1.560))
-	err = WrapErr(1713607010089, err).WithData(ErrKind("three"), Data("https://www.google.com"))
+	err = WrapErr(1713607005378, err1).WithKind(DataKind[float32]("two")(1.560))
+	err = WrapErr(1713607010089, err).WithKind(DataKind[string]("three")("https://www.google.com"))
 
 	rep := Report(err)
 	fmt.Println(rep)

@@ -8,10 +8,11 @@ import (
 	"strings"
 )
 
-func TryPanic(err error) {
+func Must[T any](obj T, err error) T {
 	if err != nil {
 		panic(err)
 	}
+	return obj
 }
 
 func Split(err error) []error {
@@ -43,14 +44,14 @@ func ParseStampedError(errString string) *errx {
 
 		switch true {
 		case frame.IsStamped && !frame.IsWrapper:
-			existingErr = NewErr(frame.Stamp, frame.Msg).WithData(frame.Kind, frame.data)
+			existingErr = NewErr(frame.Stamp, frame.Msg).WithKind(frame.Kind)
 			existinge = nil
 		case frame.IsStamped && frame.IsWrapper:
 			if existinge != nil {
-				existingErr = WrapErr(frame.Stamp, existinge).WithData(frame.Kind, frame.data)
+				existingErr = WrapErr(frame.Stamp, existinge).WithKind(frame.Kind)
 				existinge = nil
 			} else {
-				existingErr = WrapErr(frame.Stamp, existingErr).WithData(frame.Kind, frame.data)
+				existingErr = WrapErr(frame.Stamp, existingErr).WithKind(frame.Kind)
 			}
 		case !frame.IsStamped && frame.IsWrapper:
 			existinge = fmt.Errorf("%s %w", frame.Msg, existingErr)
@@ -81,17 +82,23 @@ func Cause(err error) error {
 	return err
 }
 
+func Panic(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 type report struct {
 	Msg    string
 	Traces []int
-	Kind   ErrKind
+	Kind   string
 }
 
 func (r *report) Error() string {
 	return r.Msg
 }
 
-func newReport(msg string, traces []int, kind ErrKind) report {
+func newReport(msg string, traces []int, kind string) report {
 	return report{
 		Msg:    msg,
 		Traces: traces,
@@ -102,7 +109,7 @@ func newReport(msg string, traces []int, kind ErrKind) report {
 func Report(err error) report {
 	var msg string
 	traces := make([]int, 0, 10)
-	var kind ErrKind
+	var kind string
 
 	for err != nil {
 		if v, ok := err.(StampedErr); ok {
@@ -130,8 +137,7 @@ type StackFrame struct {
 	IsWrapper bool
 	IsStamped bool
 	Stamp     int
-	Kind      ErrKind
-	data      dataValue
+	Kind      errKind
 	Msg       string
 }
 
@@ -151,8 +157,7 @@ func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string
 		IsWrapper: isWrapper,
 		IsStamped: !isUnstamped,
 		Stamp:     stamp,
-		Kind:      ErrKind(kindStr),
-		data:      data,
+		Kind:      errKind{kind: kindStr, data: data},
 		Msg:       strings.TrimSpace(msg),
 	}
 }

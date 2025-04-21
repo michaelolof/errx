@@ -4,18 +4,20 @@ import (
 	"fmt"
 )
 
-type ErrKind string
+type errKind struct {
+	kind string
+	data dataValue
+}
 
 type StampedErr interface {
 	Msg() string
 	Stamp() int
-	Kind() ErrKind
+	Kind() string
 }
 
 type errx struct {
 	ts   int
-	data dataValue
-	kind ErrKind
+	kind errKind
 	msg  string
 	err  error
 	errx *errx
@@ -73,20 +75,13 @@ func (e *errx) Stamp() int {
 }
 
 // Returns the kind of error it is
-func (e *errx) Kind() ErrKind {
-	return e.kind
+func (e *errx) Kind() string {
+	return e.kind.kind
 }
 
 // Add an error kind to your error object.
-func (e *errx) WithKind(kind ErrKind) *errx {
+func (e *errx) WithKind(kind errKind) *errx {
 	e.kind = kind
-	return e
-}
-
-// Add data to your error object using the error kind as a key
-func (e *errx) WithData(kind ErrKind, data dataValue) *errx {
-	e.kind = kind
-	e.data = data
 	return e
 }
 
@@ -121,34 +116,24 @@ func Newf(ts int, msg string, a ...any) error {
 }
 
 // NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
-func NewKind(ts int, msg string, kind ErrKind) error {
+func NewKind(ts int, msg string, kind errKind) error {
 	return NewErr(ts, msg).WithKind(kind)
 }
 
 // WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
-func WrapKind(ts int, err error, kind ErrKind) error {
+func WrapKind(ts int, err error, kind errKind) error {
 	return WrapErr(ts, err).WithKind(kind)
-}
-
-// NewDatareturns a timestamped error given the timestamp, error kind, message and a data value
-func NewData(ts int, msg string, kind ErrKind, data dataValue) error {
-	return NewErr(ts, msg).WithData(kind, data)
-}
-
-// WrapData wraps an existing error given the timestamp, error kind, and a data value
-func WrapData(ts int, err error, kind ErrKind, data dataValue) error {
-	return WrapErr(ts, err).WithData(kind, data)
 }
 
 func buildErrx(e *errx) error {
 	var details string
 
-	if e.kind != "" && e.data.isSet {
-		details = fmt.Sprintf("[ts %d kind %s data %s]", e.ts, e.kind, e.data.String())
-	} else if e.kind != "" && !e.data.isSet {
-		details = fmt.Sprintf("[ts %d kind %s]", e.ts, e.kind)
-	} else if e.data.isSet && e.kind == "" {
-		details = fmt.Sprintf("[ts %d data %s]", e.ts, e.data.String())
+	if e.kind.kind != "" && e.kind.data.isSet {
+		details = fmt.Sprintf("[ts %d kind %s data %s]", e.ts, e.kind.kind, e.kind.data.String())
+	} else if e.kind.kind != "" && !e.kind.data.isSet {
+		details = fmt.Sprintf("[ts %d kind %s]", e.ts, e.kind.kind)
+	} else if e.kind.data.isSet && e.kind.kind == "" {
+		details = fmt.Sprintf("[ts %d data %s]", e.ts, e.kind.data.String())
 	} else if e.ts != 0 {
 		details = fmt.Sprintf("[ts %d]", e.ts)
 	}
@@ -165,6 +150,22 @@ func buildErrx(e *errx) error {
 
 }
 
+func Kind(k string) errKind {
+	return errKind{
+		kind: k,
+		data: dataValue{isSet: false},
+	}
+}
+
+func DataKind[T DataType](k string) func(d T) errKind {
+	return func(d T) errKind {
+		return errKind{
+			kind: k,
+			data: dataValue{isSet: true, val: d},
+		}
+	}
+}
+
 type dataValue struct {
 	isSet  bool
 	val    any
@@ -179,9 +180,4 @@ func (d *dataValue) String() string {
 	} else {
 		return ""
 	}
-}
-
-// Define a datavalue based on the DataYype constraint.
-func Data[T DataType](val T) dataValue {
-	return dataValue{val: val, isSet: true}
 }
