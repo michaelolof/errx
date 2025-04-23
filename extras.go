@@ -44,14 +44,14 @@ func ParseStampedError(errString string) *errx {
 
 		switch true {
 		case frame.IsStamped && !frame.IsWrapper:
-			existingErr = NewErr(frame.Stamp, frame.Msg).WithKind(frame.Kind)
+			existingErr = newErr(frame.Stamp, frame.Msg).WithKind(frame.Kind)
 			existinge = nil
 		case frame.IsStamped && frame.IsWrapper:
 			if existinge != nil {
-				existingErr = WrapErr(frame.Stamp, existinge).WithKind(frame.Kind)
+				existingErr = wrapErr(frame.Stamp, existinge).WithKind(frame.Kind)
 				existinge = nil
 			} else {
-				existingErr = WrapErr(frame.Stamp, existingErr).WithKind(frame.Kind)
+				existingErr = wrapErr(frame.Stamp, existingErr).WithKind(frame.Kind)
 			}
 		case !frame.IsStamped && frame.IsWrapper:
 			existinge = fmt.Errorf("%s %w", frame.Msg, existingErr)
@@ -86,6 +86,27 @@ func Panic(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func IsKind(err error, kind errKind) bool {
+	for err != nil {
+		if e, ok := err.(interface{ Kind() string }); ok {
+			return e.Kind() == kind.kind
+		}
+		err = Unwrap(err)
+	}
+	return false
+}
+
+func IsDataKind[T DataType](err error, kind func(d T) errKind) bool {
+	var d T
+	for err != nil {
+		if e, ok := err.(interface{ Kind() string }); ok {
+			return e.Kind() == kind(d).kind
+		}
+		err = Unwrap(err)
+	}
+	return false
 }
 
 type report struct {
@@ -136,14 +157,14 @@ func Report(err error) report {
 type StackFrame struct {
 	IsWrapper bool
 	IsStamped bool
-	Stamp     int
+	Stamp     literalInt
 	Kind      errKind
 	Msg       string
 }
 
 func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
 	isUnstamped := false
-	stamp, err := strconv.Atoi(stampStr)
+	ts, err := strconv.Atoi(stampStr)
 	if err != nil {
 		isUnstamped = true
 	}
@@ -156,7 +177,7 @@ func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string
 	return StackFrame{
 		IsWrapper: isWrapper,
 		IsStamped: !isUnstamped,
-		Stamp:     stamp,
+		Stamp:     literalInt(ts),
 		Kind:      errKind{kind: kindStr, data: data},
 		Msg:       strings.TrimSpace(msg),
 	}

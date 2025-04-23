@@ -10,41 +10,41 @@ import (
 
 func TestErrorWrappings(t *testing.T) {
 	{
-		err := NewErr(1741599154, "something went wrong")
-		err = WrapErr(1741600103, err)
-		err = WrapErr(1741600368, err)
+		err := newErr(1741599154, "something went wrong")
+		err = wrapErr(1741600103, err)
+		err = wrapErr(1741600368, err)
 		assert.Equal(t, err.Error(), "[ts 1741600368]; [ts 1741600103]; [ts 1741599154] something went wrong")
 	}
 
 	{
 		err := errors.New("something went wrong")
-		err = WrapErr(1741600621, err)
-		err = WrapErr(1741600633, err)
+		err = wrapErr(1741600621, err)
+		err = wrapErr(1741600633, err)
 		assert.Equal(t, err.Error(), "[ts 1741600633]; [ts 1741600621]; something went wrong")
 	}
 
 	{
-		err1 := NewErr(1741601009, "something went wrong")
-		err1 = WrapErr(1741601336, err1)
+		err1 := newErr(1741601009, "something went wrong")
+		err1 = wrapErr(1741601336, err1)
 		err := fmt.Errorf("another generic error: %w", err1)
-		err = WrapErr(1741601177, err)
-		err = WrapErr(1741601190, err)
+		err = wrapErr(1741601177, err)
+		err = wrapErr(1741601190, err)
 		assert.Equal(t, err.Error(), "[ts 1741601190]; [ts 1741601177]; another generic error: [ts 1741601336]; [ts 1741601009] something went wrong")
 	}
 
 	{
-		err := NewErr(1741601666, "something went wrong").WithKind(DataKind[int]("test_error")(30))
-		err = WrapErr(1741601699, err)
-		err = WrapErr(1741601711, err).WithKind(DataKind[string]("url_error")("www.test.com"))
+		err := newErr(1741601666, "something went wrong").WithKind(DataKind[int]("test_error")(30))
+		err = wrapErr(1741601699, err)
+		err = wrapErr(1741601711, err).WithKind(DataKind[string]("url_error")("www.test.com"))
 		assert.Equal(t, err.Error(), `[ts 1741601711 kind url_error data "www.test.com"]; [ts 1741601699]; [ts 1741601666 kind test_error data 30] something went wrong`)
 	}
 
 	{
 		err := errors.New("something went wrong")
 		err = fmt.Errorf("something else broke: %w", err)
-		err = WrapErr(1741602329, err)
-		err = WrapErr(1741602338, err).WithKind(DataKind[int]("block_err")(40))
-		err = WrapErr(1741602379, err)
+		err = wrapErr(1741602329, err)
+		err = wrapErr(1741602338, err).WithKind(DataKind[int]("block_err")(40))
+		err = wrapErr(1741602379, err)
 		assert.Equal(t, err.Error(), "[ts 1741602379]; [ts 1741602338 kind block_err data 40]; [ts 1741602329]; something else broke: something went wrong")
 	}
 
@@ -52,6 +52,20 @@ func TestErrorWrappings(t *testing.T) {
 		err := errx{msg: "something went wrong"}
 		fmt.Println(err.Error())
 		assert.Equal(t, err.Error(), "something went wrong")
+	}
+}
+
+func TestErrorWrapFormating(t *testing.T) {
+	{
+		err := New(1745412853, "something went wrong")
+		err = Wrapf(1745413114, "i said %v", err)
+		assert.Equal(t, err.Error(), "[ts 1745413114]; [ts 1745412853] i said something went wrong")
+	}
+
+	{
+		err := errors.New("something went wrong")
+		err = Wrapf(1745413538, "i said %v", err)
+		assert.Equal(t, err.Error(), "[ts 1745413538]; i said something went wrong")
 	}
 }
 
@@ -73,20 +87,20 @@ func TestErrorUnwrapping(t *testing.T) {
 
 func TestErrorIs(t *testing.T) {
 	err0 := errors.New("something one")
-	err := WrapErr(1741638522, err0)
-	err = WrapErr(1741638536, err)
+	err := wrapErr(1741638522, err0)
+	err = wrapErr(1741638536, err)
 	match := errors.Is(err, err0)
 	assert.True(t, match)
 
-	err1 := NewErr(1741638630, "something two")
-	err = WrapErr(1741638643, err1)
-	err = WrapErr(1741638650, err)
+	err1 := newErr(1741638630, "something two")
+	err = wrapErr(1741638643, err1)
+	err = wrapErr(1741638650, err)
 	match = errors.Is(err, err1)
 	assert.True(t, match)
 
-	err2 := NewErr(1741638827, "something two")
-	err = WrapErr(1741638830, err2)
-	err = WrapErr(1741638832, err)
+	err2 := newErr(1741638827, "something two")
+	err = wrapErr(1741638830, err2)
+	err = wrapErr(1741638832, err)
 	match = Is(err, err2)
 	fmt.Println(match)
 	assert.True(t, match)
@@ -95,7 +109,7 @@ func TestErrorIs(t *testing.T) {
 func TestFindData(t *testing.T) {
 	{
 		kind := DataKind[int]("failure")
-		err := NewErr(1741653892, "something went wrong").WithKind(kind(10))
+		err := newErr(1741653892, "something went wrong").WithKind(kind(10))
 		data, ok := FindData(kind, err)
 
 		assert.Equal(t, ok, true)
@@ -104,7 +118,7 @@ func TestFindData(t *testing.T) {
 
 	{
 		kind := DataKind[float64]("failure")
-		err := NewErr(1741655302, "something went wrong").WithKind(kind(1.453))
+		err := newErr(1741655302, "something went wrong").WithKind(kind(1.453))
 		data2, ok := FindData(kind, err)
 
 		assert.Equal(t, ok, true)
@@ -117,7 +131,7 @@ func TestFindData(t *testing.T) {
 			"name": "John Doe",
 			"age":  "22",
 		}
-		err := NewErr(1713712210034, "something went wrong").WithKind(kind(data))
+		err := newErr(1713712210034, "something went wrong").WithKind(kind(data))
 
 		data3, ok := FindData(kind, err)
 		assert.Equal(t, ok, true)
@@ -126,7 +140,7 @@ func TestFindData(t *testing.T) {
 
 	{
 		kind := DataKind[int]("xx")
-		err := NewErr(1713712707130, "something went wrong")
+		err := newErr(1713712707130, "something went wrong")
 		data5, ok := FindData(kind, err)
 
 		assert.False(t, ok)
@@ -137,7 +151,7 @@ func TestFindData(t *testing.T) {
 func TestFindDataFromParsedError(t *testing.T) {
 	{
 		kind := DataKind[int]("failure")
-		err := NewErr(1741655898, "something went wrong").WithKind(kind(10))
+		err := newErr(1741655898, "something went wrong").WithKind(kind(10))
 		msg := err.Error()
 
 		pErr := ParseStampedError(msg)
@@ -150,7 +164,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 
 	{
 		kind := DataKind[float32]("failure")
-		err := NewErr(1713705985678, "something went wrong").WithKind(kind(1.453))
+		err := newErr(1713705985678, "something went wrong").WithKind(kind(1.453))
 		msg := err.Error()
 
 		pErr := ParseStampedError(msg)
@@ -167,7 +181,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 			"name": "John",
 			"age":  "22",
 		}
-		err := NewErr(1741656212, "something went wrong").WithKind(kind(data))
+		err := newErr(1741656212, "something went wrong").WithKind(kind(data))
 		msg := err.Error()
 
 		pErr := ParseStampedError(msg)
@@ -178,7 +192,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 	}
 
 	{
-		err := NewErr(1713712738707, "something went wrong")
+		err := newErr(1713712738707, "something went wrong")
 		msg := err.Error()
 
 		perr := ParseStampedError(msg)
@@ -193,10 +207,10 @@ func TestFindDataFromParsedError(t *testing.T) {
 func TestWrappedFindData(t *testing.T) {
 	{
 		kind := DataKind[int]("failure")
-		err := NewErr(1741656430, "something went wrong").WithKind(kind(30))
-		err = WrapErr(1741656433, err).WithKind(DataKind[string]("another_failure")("https://www.google.com"))
+		err := newErr(1741656430, "something went wrong").WithKind(kind(30))
+		err = wrapErr(1741656433, err).WithKind(DataKind[string]("another_failure")("https://www.google.com"))
 		err1 := fmt.Errorf("another generic error: %w", err)
-		err = WrapErr(1741656520, err1)
+		err = wrapErr(1741656520, err1)
 
 		dataInt, ok := FindData[int](kind, err)
 		assert.True(t, ok)
@@ -205,11 +219,11 @@ func TestWrappedFindData(t *testing.T) {
 
 	{
 		notFoundErr := DataKind[float32]("not-found-error")
-		err := NewErr(1713713974259, "something went wrong").WithKind(DataKind[float32]("failure_one")(1.56))
-		err = WrapErr(1713714078710, err).WithKind(notFoundErr(1.90))
-		err = WrapErr(1713714078710, err).WithKind(DataKind[float32]("failure_three")(1.49))
+		err := newErr(1713713974259, "something went wrong").WithKind(DataKind[float32]("failure_one")(1.56))
+		err = wrapErr(1713714078710, err).WithKind(notFoundErr(1.90))
+		err = wrapErr(1713714078710, err).WithKind(DataKind[float32]("failure_three")(1.49))
 		err1 := fmt.Errorf("another generic error: %w", err)
-		err = WrapErr(1713714083537, err1)
+		err = wrapErr(1713714083537, err1)
 
 		data, ok := FindData(notFoundErr, err)
 		assert.True(t, ok)
@@ -221,10 +235,10 @@ func TestWrappedFindDataFromParsedError(t *testing.T) {
 	{
 		genericErr := DataKind[int]("generic_error")
 		urlErr := DataKind[string]("url_error")
-		err := NewErr(1741657070, "something went wrong").WithKind(genericErr(30))
-		err = WrapErr(1741657072, err).WithKind(urlErr("https://www.google.com"))
+		err := newErr(1741657070, "something went wrong").WithKind(genericErr(30))
+		err = wrapErr(1741657072, err).WithKind(urlErr("https://www.google.com"))
 		err1 := fmt.Errorf("another generic error %w", err)
-		err = WrapErr(1713713041917, err1)
+		err = wrapErr(1713713041917, err1)
 
 		perr := ParseStampedError(err.Error())
 
@@ -244,12 +258,12 @@ func TestWrappedFindDataFromParsedError(t *testing.T) {
 		genericErr := DataKind[int]("generic_error")
 		err := errors.New("something went wrong")
 		err = fmt.Errorf("second generic error %w", err)
-		err = WrapErr(1741659127, err).WithKind(urlErr("https://www.google.com"))
-		err = WrapErr(1741659129, err).WithKind(listErr([]int{1, 2, 3, 4, 7}))
+		err = wrapErr(1741659127, err).WithKind(urlErr("https://www.google.com"))
+		err = wrapErr(1741659129, err).WithKind(listErr([]int{1, 2, 3, 4, 7}))
 		err1 := fmt.Errorf("third generic error %w", err)
-		err = WrapErr(1741659230, err1)
-		err = WrapErr(1741659238, err).WithKind(notFound(1.456))
-		err = WrapErr(1741659340, err).WithKind(genericErr(30))
+		err = wrapErr(1741659230, err1)
+		err = wrapErr(1741659238, err).WithKind(notFound(1.456))
+		err = wrapErr(1741659340, err).WithKind(genericErr(30))
 		err = fmt.Errorf("another generic error %w", err)
 
 		perr := ParseStampedError(err.Error())

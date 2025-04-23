@@ -4,6 +4,7 @@ import (
 	"fmt"
 )
 
+type literalInt int
 type errKind struct {
 	kind string
 	data dataValue
@@ -16,7 +17,7 @@ type StampedErr interface {
 }
 
 type errx struct {
-	ts   int
+	ts   literalInt
 	kind errKind
 	msg  string
 	err  error
@@ -71,7 +72,7 @@ func (e *errx) Err() error {
 
 // Returns the error stamp for the given error
 func (e *errx) Stamp() int {
-	return e.ts
+	return int(e.ts)
 }
 
 // Returns the kind of error it is
@@ -86,43 +87,68 @@ func (e *errx) WithKind(kind errKind) *errx {
 }
 
 // Create a new errx instance and add properties to it using the builder pattern.
-func NewErr(ts int, msg string) *errx {
-	return &errx{ts: ts, msg: msg}
+func NewBuild(ts int, msg string) *errx {
+	return newErr(literalInt(ts), msg)
 }
 
 // Wraps am existing error into a new errx instance and add properties to it using the builder pattern.
-func WrapErr(ts int, err error) *errx {
+func BuildFrom(ts int, err error) *errx {
+	return wrapErr(literalInt(ts), err)
+}
+
+// New returns an error given a timestamp and error message.
+func New(ts literalInt, msg string) error {
+	return newErr(ts, msg)
+}
+
+// Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
+func Wrap(ts literalInt, err error) error {
+	return wrapErr(ts, err)
+}
+
+// NewF returns a timestamped error with the message formatted according to a format specifier.
+func Newf(ts literalInt, pattern string, a ...any) error {
+	return newErr(ts, fmt.Sprintf(pattern, a...))
+}
+
+// Wrapf formats an existing error based on the timestamp and formats the existing error message according to the format specifier defined
+func Wrapf(ts literalInt, format string, err error, a ...any) error {
+	arr := make([]any, 0, len(a)+1)
+	switch v := err.(type) {
+	case *errx:
+		arr = append(arr, v.msg)
+		arr = append(arr, a...)
+		v.msg = fmt.Sprintf(format, arr...)
+		return wrapErr(ts, v)
+	default:
+		arr = append(arr, err)
+		arr = append(arr, a...)
+		err2 := fmt.Errorf(format, arr...)
+		return wrapErr(ts, err2)
+	}
+}
+
+// NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
+func NewKind(ts literalInt, msg string, kind errKind) error {
+	return newErr(ts, msg).WithKind(kind)
+}
+
+// WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
+func WrapKind(ts literalInt, err error, kind errKind) error {
+	return wrapErr(ts, err).WithKind(kind)
+}
+
+func newErr(ts literalInt, msg string) *errx {
+	return &errx{ts: ts, msg: msg}
+}
+
+func wrapErr(ts literalInt, err error) *errx {
 	switch e := err.(type) {
 	case *errx:
 		return &errx{ts: ts, errx: e}
 	default:
 		return &errx{ts: ts, err: err}
 	}
-}
-
-// New returns an error given a timestamp and error message.
-func New(ts int, msg string) error {
-	return NewErr(ts, msg)
-}
-
-// Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
-func Wrap(ts int, err error) error {
-	return WrapErr(ts, err)
-}
-
-// NewF returns a timestamped error with the message formatted according to a format specifier.
-func Newf(ts int, msg string, a ...any) error {
-	return NewErr(ts, fmt.Sprintf(msg, a...))
-}
-
-// NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
-func NewKind(ts int, msg string, kind errKind) error {
-	return NewErr(ts, msg).WithKind(kind)
-}
-
-// WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
-func WrapKind(ts int, err error, kind errKind) error {
-	return WrapErr(ts, err).WithKind(kind)
 }
 
 func buildErrx(e *errx) error {
@@ -150,6 +176,7 @@ func buildErrx(e *errx) error {
 
 }
 
+// Define a basic error kind
 func Kind(k string) errKind {
 	return errKind{
 		kind: k,
@@ -157,6 +184,7 @@ func Kind(k string) errKind {
 	}
 }
 
+// Define an error kind with acceptable data types
 func DataKind[T DataType](k string) func(d T) errKind {
 	return func(d T) errKind {
 		return errKind{
