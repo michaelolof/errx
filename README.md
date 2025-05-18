@@ -83,7 +83,7 @@ import "github.com/michaelolof/errx"
 
 func failerOne() error {
     ...
-    return errx.NewKind(1745397000, "something went wrong", NotFoundErr)
+    return errx.NewKind(1745397000, NotFoundErr, "something went wrong")
     ...
 }
 
@@ -92,7 +92,7 @@ func failerTwo() error {
     ...
     err := failerOne()
     if err != nil {
-        return errx.WrapKind(1745397994, err, InvalidNoErr(v))
+        return errx.WrapKind(1745397994, InvalidNoErr(v), err)
     }
     ...
 }
@@ -122,7 +122,7 @@ if v, ok := errx.FindData(err, InvalidNoErr); ok {
 In `errx` every information about the error - stamp, kind, data, message are structured as part of the error string. This means your error string tells the full story about your errors. Consequently this also means you can build* back your error object from the strings by calling`ParseStampedError`
 <br/>
 <br/>
-It might be tempting define error kinds every time you create or wrap an error, but in practice that's usually a bad idea. A general rule to decide when you need an error kind is if you need it for a decision at some later point in your application. 
+It might be tempting define error kinds every time you create or wrap an error, but in practice that's usually a bad idea. A general rule to decide when you need an error kind is if you need it for decisioning at some later point in your application. 
 <br/>
 Essentially if you're not going to check on it using `IsKind` or `IsDataKind` or retrieve data from it using `FindData` just stick to basic error creation or wrapping and don't define kinds for them.
 

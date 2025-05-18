@@ -5,6 +5,7 @@ type lexer struct {
 	currChar          byte
 	currPos           int
 	nextPos           int
+	len               int
 	openBracketsCount []int
 	list              []token
 }
@@ -13,9 +14,14 @@ func newLexer(input string) *lexer {
 	l := &lexer{
 		source:            input,
 		openBracketsCount: make([]int, 0, (len(input)/7)+1),
+		len:               len(input),
 	}
 	l.readChar()
 	return l
+}
+
+func (l *lexer) hasNext() bool {
+	return l.currPos < l.len
 }
 
 func (l *lexer) nextToken() token {
@@ -41,13 +47,15 @@ func (l *lexer) nextToken() token {
 			tok.typ = rBrackets
 		}
 	case ';':
-		// preText := l.peekBehind(1)
 		postText := l.peekAhead(2)
 		// if preText == "]" && postText == "; " {
 		if postText == "; " {
 			tok.literal = currStr
 			tok.typ = wrapperDelimiter
 		}
+	case ' ':
+		tok.literal = currStr
+		tok.typ = emptySpace
 	case 't':
 		preText := l.peekBehind(1)
 		postText := l.peekAhead(3)
@@ -123,6 +131,7 @@ func (l *lexer) peekAhead(n int) string {
 	pos := l.currPos
 	count := 0
 	for l.currChar != 0 {
+
 		if count >= n {
 			break
 		}
@@ -131,6 +140,9 @@ func (l *lexer) peekAhead(n int) string {
 		count++
 	}
 
+	if pos > l.len {
+		pos = l.len
+	}
 	return l.source[l.currPos:pos]
 }
 
@@ -155,6 +167,7 @@ const (
 	kindDirective
 	dataDirective
 	wrapperDelimiter
+	emptySpace
 	unknownToken
 	eof
 )

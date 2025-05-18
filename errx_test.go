@@ -110,7 +110,7 @@ func TestFindData(t *testing.T) {
 	{
 		kind := DataKind[int]("failure")
 		err := newErr(1741653892, "something went wrong").WithKind(kind(10))
-		data, ok := FindData(kind, err)
+		data, ok := FindData(err, kind)
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data, 10)
@@ -119,7 +119,7 @@ func TestFindData(t *testing.T) {
 	{
 		kind := DataKind[float64]("failure")
 		err := newErr(1741655302, "something went wrong").WithKind(kind(1.453))
-		data2, ok := FindData(kind, err)
+		data2, ok := FindData(err, kind)
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data2, 1.453)
@@ -133,7 +133,7 @@ func TestFindData(t *testing.T) {
 		}
 		err := newErr(1713712210034, "something went wrong").WithKind(kind(data))
 
-		data3, ok := FindData(kind, err)
+		data3, ok := FindData(err, kind)
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data3, data)
 	}
@@ -141,7 +141,7 @@ func TestFindData(t *testing.T) {
 	{
 		kind := DataKind[int]("xx")
 		err := newErr(1713712707130, "something went wrong")
-		data5, ok := FindData(kind, err)
+		data5, ok := FindData(err, kind)
 
 		assert.False(t, ok)
 		assert.Nil(t, data5)
@@ -156,7 +156,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 
 		pErr := ParseStampedError(msg)
 
-		data, ok := FindData(kind, pErr)
+		data, ok := FindData(pErr, kind)
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data, 10)
@@ -169,7 +169,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 
 		pErr := ParseStampedError(msg)
 
-		data, ok := FindData(kind, pErr)
+		data, ok := FindData(pErr, kind)
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data, float32(1.453))
@@ -186,7 +186,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 
 		pErr := ParseStampedError(msg)
 
-		data3, ok := FindData(kind, pErr)
+		data3, ok := FindData(pErr, kind)
 		assert.Equal(t, ok, true)
 		assert.Equal(t, *data3, data)
 	}
@@ -197,7 +197,7 @@ func TestFindDataFromParsedError(t *testing.T) {
 
 		perr := ParseStampedError(msg)
 
-		data5, ok := FindData(DataKind[int]("xxx"), perr)
+		data5, ok := FindData(perr, DataKind[int]("xxx"))
 
 		assert.False(t, ok)
 		assert.Nil(t, data5)
@@ -212,7 +212,7 @@ func TestWrappedFindData(t *testing.T) {
 		err1 := fmt.Errorf("another generic error: %w", err)
 		err = wrapErr(1741656520, err1)
 
-		dataInt, ok := FindData[int](kind, err)
+		dataInt, ok := FindData(err, kind)
 		assert.True(t, ok)
 		assert.Equal(t, *dataInt, 30)
 	}
@@ -225,7 +225,7 @@ func TestWrappedFindData(t *testing.T) {
 		err1 := fmt.Errorf("another generic error: %w", err)
 		err = wrapErr(1713714083537, err1)
 
-		data, ok := FindData(notFoundErr, err)
+		data, ok := FindData(err, notFoundErr)
 		assert.True(t, ok)
 		assert.Equal(t, *data, float32(1.90))
 	}
@@ -242,11 +242,11 @@ func TestWrappedFindDataFromParsedError(t *testing.T) {
 
 		perr := ParseStampedError(err.Error())
 
-		dataInt, ok := FindData(genericErr, perr)
+		dataInt, ok := FindData(perr, genericErr)
 		assert.True(t, ok)
 		assert.Equal(t, *dataInt, 30)
 
-		dataStr, ok := FindData(urlErr, perr)
+		dataStr, ok := FindData(perr, urlErr)
 		assert.True(t, ok)
 		assert.Equal(t, *dataStr, "https://www.google.com")
 	}
@@ -268,19 +268,19 @@ func TestWrappedFindDataFromParsedError(t *testing.T) {
 
 		perr := ParseStampedError(err.Error())
 
-		dataStr, ok := FindData(urlErr, perr)
+		dataStr, ok := FindData(perr, urlErr)
 		assert.True(t, ok)
 		assert.Equal(t, *dataStr, "https://www.google.com")
 
-		dataflt, ok := FindData(notFound, perr)
+		dataflt, ok := FindData(perr, notFound)
 		assert.True(t, ok)
 		assert.Equal(t, *dataflt, float32(1.456))
 
-		dataInt, ok := FindData(genericErr, perr)
+		dataInt, ok := FindData(perr, genericErr)
 		assert.True(t, ok)
 		assert.Equal(t, *dataInt, 30)
 
-		dataIntL, ok := FindData(listErr, perr)
+		dataIntL, ok := FindData(perr, listErr)
 		assert.True(t, ok)
 		assert.Equal(t, *dataIntL, []int{1, 2, 3, 4, 7})
 	}

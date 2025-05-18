@@ -36,10 +36,8 @@ func TestParseStampedErrorCase2(t *testing.T) {
 	err = wrapErr(1713607005378, err1).WithKind(DataKind[float32]("two")(1.560))
 	err = wrapErr(1713607010089, err).WithKind(DataKind[string]("three")("https://www.google.com"))
 
-	rep := Report(err)
-	fmt.Println(rep)
-
 	msg := err.Error()
+	fmt.Println(msg)
 	parsed := ParseStampedError(msg)
 
 	newMsg := parsed.Error()
@@ -80,16 +78,4 @@ func TestCause_Case1(t *testing.T) {
 	errC := Cause(err)
 
 	assert.Equal(t, errC.Error(), err1.Error())
-}
-
-func TestReport_Case1(t *testing.T) {
-	err := newErr(1715845918044, "something went wrong")
-	err = wrapErr(1715845936107, err)
-	err = wrapErr(1715845950562, err)
-	err = wrapErr(1715845961777, err)
-
-	rep := Report(err)
-
-	assert.Equal(t, rep.Msg, "something went wrong")
-	assert.Equal(t, rep.Traces, []int{1715845961777, 1715845950562, 1715845936107, 1715845918044})
 }

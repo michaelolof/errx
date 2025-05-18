@@ -4,7 +4,8 @@ import (
 	"fmt"
 )
 
-type literalInt int
+// A literal int
+type lint int
 type errKind struct {
 	kind string
 	data dataValue
@@ -17,7 +18,7 @@ type StampedErr interface {
 }
 
 type errx struct {
-	ts   literalInt
+	ts   lint
 	kind errKind
 	msg  string
 	err  error
@@ -51,7 +52,7 @@ func (e *errx) Unwrap() error {
 }
 
 // Returns the list of stamp traces for a given error.
-func (e *errx) Traces() []int {
+func (e *errx) Stamps() []int {
 	rtn := make([]int, 0, 15)
 	for {
 		if err := e.Unwrap(); err != nil {
@@ -88,66 +89,84 @@ func (e *errx) WithKind(kind errKind) *errx {
 
 // Create a new errx instance and add properties to it using the builder pattern.
 func NewBuild(ts int, msg string) *errx {
-	return newErr(literalInt(ts), msg)
+	return newErr(lint(ts), msg)
 }
 
 // Wraps am existing error into a new errx instance and add properties to it using the builder pattern.
 func BuildFrom(ts int, err error) *errx {
-	return wrapErr(literalInt(ts), err)
+	return wrapErr(lint(ts), err)
 }
 
 // New returns an error given a timestamp and error message.
-func New(ts literalInt, msg string) error {
+func New(ts lint, msg string) error {
 	return newErr(ts, msg)
 }
 
 // Wrap formats an existing error based on the timestamp given and returns the string as a value that satisfies error.
-func Wrap(ts literalInt, err error) error {
+func Wrap(ts lint, err error) error {
 	return wrapErr(ts, err)
 }
 
 // NewF returns a timestamped error with the message formatted according to a format specifier.
-func Newf(ts literalInt, pattern string, a ...any) error {
-	return newErr(ts, fmt.Sprintf(pattern, a...))
+func Newf(ts lint, pattern string, a ...any) error {
+	return newErrf(ts, pattern, a...)
 }
 
 // Wrapf formats an existing error based on the timestamp and formats the existing error message according to the format specifier defined
-func Wrapf(ts literalInt, format string, err error, a ...any) error {
-	arr := make([]any, 0, len(a)+1)
-	switch v := err.(type) {
-	case *errx:
-		arr = append(arr, v.msg)
-		arr = append(arr, a...)
-		v.msg = fmt.Sprintf(format, arr...)
-		return wrapErr(ts, v)
-	default:
-		arr = append(arr, err)
-		arr = append(arr, a...)
-		err2 := fmt.Errorf(format, arr...)
-		return wrapErr(ts, err2)
-	}
+func Wrapf(ts lint, pattern string, err error, a ...any) error {
+	return wrapErrf(ts, pattern, err, a...)
 }
 
 // NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
-func NewKind(ts literalInt, msg string, kind errKind) error {
+func NewKind(ts lint, kind errKind, msg string) error {
 	return newErr(ts, msg).WithKind(kind)
 }
 
 // WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
-func WrapKind(ts literalInt, err error, kind errKind) error {
+func WrapKind(ts lint, kind errKind, err error) error {
 	return wrapErr(ts, err).WithKind(kind)
 }
 
-func newErr(ts literalInt, msg string) *errx {
+// NewKind returns a timestamped error with a message and given error kind which can be used to provide context or error matching
+func NewKindf(ts lint, kind errKind, msg string, a ...any) error {
+	return newErrf(ts, msg, a...).WithKind(kind)
+}
+
+// WrapKind wraps an existing error given the timestamp and a given error kind which can be used to provide context or error matching
+func WrapKindf(ts lint, kind errKind, pattern string, err error, a ...any) error {
+	return wrapErrf(ts, pattern, err, a...).WithKind(kind)
+}
+
+func newErr(ts lint, msg string) *errx {
 	return &errx{ts: ts, msg: msg}
 }
 
-func wrapErr(ts literalInt, err error) *errx {
+func wrapErr(ts lint, err error) *errx {
 	switch e := err.(type) {
 	case *errx:
 		return &errx{ts: ts, errx: e}
 	default:
 		return &errx{ts: ts, err: err}
+	}
+}
+
+func newErrf(ts lint, pattern string, a ...any) *errx {
+	return newErr(ts, fmt.Sprintf(pattern, a...))
+}
+
+func wrapErrf(ts lint, pattern string, err error, a ...any) *errx {
+	arr := make([]any, 0, len(a)+1)
+	switch v := err.(type) {
+	case *errx:
+		arr = append(arr, v.msg)
+		arr = append(arr, a...)
+		v.msg = fmt.Sprintf(pattern, arr...)
+		return wrapErr(ts, v)
+	default:
+		arr = append(arr, err)
+		arr = append(arr, a...)
+		err2 := fmt.Errorf(pattern, arr...)
+		return wrapErr(ts, err2)
 	}
 }
 
@@ -174,38 +193,4 @@ func buildErrx(e *errx) error {
 		return fmt.Errorf("%s", e.msg)
 	}
 
-}
-
-// Define a basic error kind
-func Kind(k string) errKind {
-	return errKind{
-		kind: k,
-		data: dataValue{isSet: false},
-	}
-}
-
-// Define an error kind with acceptable data types
-func DataKind[T DataType](k string) func(d T) errKind {
-	return func(d T) errKind {
-		return errKind{
-			kind: k,
-			data: dataValue{isSet: true, val: d},
-		}
-	}
-}
-
-type dataValue struct {
-	isSet  bool
-	val    any
-	valStr string
-}
-
-func (d *dataValue) String() string {
-	if d.isSet && d.valStr != "" {
-		return d.valStr
-	} else if d.isSet && d.val != nil {
-		return toStr(d.val)
-	} else {
-		return ""
-	}
 }

@@ -29,44 +29,12 @@ func Contains(err error, substr string) bool {
 	return strings.Contains(err.Error(), substr)
 }
 
-func GetStackFrames(err error) []StackFrame {
+func GetStackFrames(err error) []stackFrame {
 	return getStackFrames(err.Error())
 }
 
 func ParseStampedError(errString string) *errx {
-
-	frames := getStackFrames(errString)
-
-	var existinge error
-	var existingErr *errx
-	for i := len(frames) - 1; i >= 0; i-- {
-		frame := frames[i]
-
-		switch true {
-		case frame.IsStamped && !frame.IsWrapper:
-			existingErr = newErr(frame.Stamp, frame.Msg).WithKind(frame.Kind)
-			existinge = nil
-		case frame.IsStamped && frame.IsWrapper:
-			if existinge != nil {
-				existingErr = wrapErr(frame.Stamp, existinge).WithKind(frame.Kind)
-				existinge = nil
-			} else {
-				existingErr = wrapErr(frame.Stamp, existingErr).WithKind(frame.Kind)
-			}
-		case !frame.IsStamped && frame.IsWrapper:
-			existinge = fmt.Errorf("%s %w", frame.Msg, existingErr)
-			existingErr = nil
-		case !frame.IsStamped && frame.IsWrapper:
-			existinge = errors.New(frame.Msg)
-			existingErr = nil
-		}
-	}
-
-	if existingErr != nil {
-		return existingErr
-	} else {
-		return &errx{err: existinge}
-	}
+	return stacksToErr(getStackFrames(errString))
 }
 
 func Cause(err error) error {
@@ -88,81 +56,18 @@ func Panic(err error) {
 	}
 }
 
-func IsKind(err error, kind errKind) bool {
-	for err != nil {
-		if e, ok := err.(interface{ Kind() string }); ok {
-			return e.Kind() == kind.kind
-		}
-		err = Unwrap(err)
-	}
-	return false
-}
-
-func IsDataKind[T DataType](err error, kind func(d T) errKind) bool {
-	var d T
-	for err != nil {
-		if e, ok := err.(interface{ Kind() string }); ok {
-			return e.Kind() == kind(d).kind
-		}
-		err = Unwrap(err)
-	}
-	return false
-}
-
-type report struct {
-	Msg    string
-	Traces []int
-	Kind   string
-}
-
-func (r *report) Error() string {
-	return r.Msg
-}
-
-func newReport(msg string, traces []int, kind string) report {
-	return report{
-		Msg:    msg,
-		Traces: traces,
-		Kind:   kind,
-	}
-}
-
-func Report(err error) report {
-	var msg string
-	traces := make([]int, 0, 10)
-	var kind string
-
-	for err != nil {
-		if v, ok := err.(StampedErr); ok {
-			msg = v.Msg()
-			traces = append(traces, v.Stamp())
-			k := v.Kind()
-			if k != "" && kind == "" {
-				kind = k
-			}
-
-		} else {
-			m := err.Error()
-			if !strings.HasPrefix(m, "[ts ") {
-				msg = m
-			}
-		}
-
-		err = Unwrap(err)
-	}
-
-	return newReport(msg, traces, kind)
-}
-
-type StackFrame struct {
-	IsWrapper bool
+type stackFrame struct {
 	IsStamped bool
-	Stamp     literalInt
+	Stamp     lint
 	Kind      errKind
 	Msg       string
 }
 
-func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string) StackFrame {
+func (s stackFrame) err() *errx {
+	return stacksToErr([]stackFrame{s})
+}
+
+func newStackFrame(stampStr string, kindStr, dataStr, msg string) stackFrame {
 	isUnstamped := false
 	ts, err := strconv.Atoi(stampStr)
 	if err != nil {
@@ -174,95 +79,144 @@ func newStackFrame(isWrapper bool, stampStr string, kindStr, dataStr, msg string
 		data = dataValue{valStr: dataStr, isSet: true}
 	}
 
-	return StackFrame{
-		IsWrapper: isWrapper,
+	return stackFrame{
 		IsStamped: !isUnstamped,
-		Stamp:     literalInt(ts),
+		Stamp:     lint(ts),
 		Kind:      errKind{kind: kindStr, data: data},
 		Msg:       strings.TrimSpace(msg),
 	}
 }
 
-func getStackFrames(errStr string) []StackFrame {
-
+func getStackFrames(errStr string) []stackFrame {
 	lex := newLexer(errStr)
 	tok := lex.nextToken()
-	for tok.typ != eof {
+	for lex.hasNext() && tok.typ != eof {
 		tok = lex.nextToken()
 	}
 
 	tree := lex.list
-	frames := make([]StackFrame, 0, (len(errStr)/7)+1)
-	stampStr := ""
-	kindStr := ""
-	dataStr := ""
-	msg := ""
+	frames := make([]stackFrame, 0, (len(errStr)/7)+1)
+
+	type state struct {
+		stamp   string
+		kind    string
+		data    string
+		msg     string
+		inStamp bool
+	}
+
+	buff := state{}
 
 	clearBuffer := func() {
-		stampStr = ""
-		kindStr = ""
-		dataStr = ""
-		msg = ""
+		buff = state{}
 	}
 
 	for i := 0; i < len(tree); i++ {
 		tok := tree[i]
-		if ms := strings.TrimSpace(msg); len(ms) > 0 && tok.typ == openBrackets {
+		switch tok.typ {
+		case openBrackets:
 			// A generic error message wrapping a stamped error
-			frames = append(frames, newStackFrame(true, "", "", "", ms))
-			clearBuffer()
-		}
+			if len(buff.msg) > 0 {
+				frames = append(frames, newStackFrame("", "", "", strings.TrimSpace(buff.msg)))
+				clearBuffer()
+			}
 
-		if tok.typ == wrapperDelimiter {
+			buff.inStamp = true
+
+		case wrapperDelimiter:
 			// A stamped error message wrapping another error
-			frames = append(frames, newStackFrame(true, stampStr, kindStr, dataStr, strings.TrimSpace(msg)))
-			clearBuffer()
-		}
+			if buff.inStamp {
+				frames = append(frames, newStackFrame(buff.stamp, buff.kind, buff.data, strings.TrimSpace(buff.msg)))
+				clearBuffer()
+			}
 
-		if tok.typ == stampDirective {
+		case stampDirective:
 			// Bring out stamp id
 			for {
 				nextToken := tree[i+1]
 				if nextToken.typ == closeBrackets || nextToken.typ == kindDirective || nextToken.typ == dataDirective {
 					break
 				}
-				stampStr = stampStr + nextToken.literal
+				buff.stamp = buff.stamp + nextToken.literal
 				i++
 			}
-		}
 
-		if tok.typ == kindDirective {
+		case kindDirective:
 			// Bring out kind error
 			for {
 				nextToken := tree[i+1]
 				if nextToken.typ == closeBrackets || nextToken.typ == dataDirective {
 					break
 				}
-				kindStr = kindStr + nextToken.literal
+				buff.kind = buff.kind + nextToken.literal
 				i++
 			}
-		}
 
-		if tok.typ == dataDirective {
+		case dataDirective:
 			// Bring out data value
 			for {
 				nextToken := tree[i+1]
 				if nextToken.typ == closeBrackets {
 					break
 				}
-				dataStr = dataStr + nextToken.literal
+				buff.data = buff.data + nextToken.literal
 				i++
 			}
-		}
 
-		if tok.typ == unknownToken {
+		case unknownToken:
 			// Append unknown characters
-			msg = msg + tok.literal
+			buff.msg = buff.msg + tok.literal
+
+		case emptySpace:
+			if len(buff.msg) > 0 {
+				buff.msg = buff.msg + tok.literal
+			}
+
 		}
 	}
 
-	frames = append(frames, newStackFrame(false, stampStr, kindStr, dataStr, msg))
+	if buff.inStamp {
+		frames = append(frames, newStackFrame(buff.stamp, buff.kind, buff.data, buff.msg))
+	} else if buff.msg != "" {
+		frames = append(frames, newStackFrame("", "", "", buff.msg))
+	}
+
 	return frames
+}
+
+func stacksToErr(frames []stackFrame) *errx {
+	var existinge error
+	var existingErr *errx
+	l := len(frames)
+	for i := l - 1; i >= 0; i-- {
+		frame := frames[i]
+		isWrapper := i < (l - 1)
+
+		switch true {
+		case frame.IsStamped && !isWrapper:
+			existingErr = newErr(frame.Stamp, frame.Msg).WithKind(frame.Kind)
+			existinge = nil
+		case frame.IsStamped && isWrapper:
+			if existinge != nil {
+				existingErr = wrapErr(frame.Stamp, existinge).WithKind(frame.Kind)
+				existinge = nil
+			} else {
+				existingErr = wrapErr(frame.Stamp, existingErr).WithKind(frame.Kind)
+			}
+		case !frame.IsStamped && isWrapper:
+			existinge = fmt.Errorf("%s %w", frame.Msg, existingErr)
+			existingErr = nil
+		case !frame.IsStamped && !isWrapper:
+			existinge = errors.New(frame.Msg)
+			existingErr = nil
+		}
+	}
+
+	if existingErr != nil {
+		return existingErr
+	} else {
+		return &errx{err: existinge}
+	}
 }
 
 func fromStr[T any](str string) (*T, error) {
