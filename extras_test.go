@@ -79,3 +79,47 @@ func TestCause_Case1(t *testing.T) {
 
 	assert.Equal(t, errC.Error(), err1.Error())
 }
+func TestMust(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		val := Must(10, nil)
+		assert.Equal(t, 10, val)
+	})
+
+	t.Run("Panic", func(t *testing.T) {
+		assert.Panics(t, func() {
+			Must(0, errors.New("fail"))
+		})
+	})
+}
+
+func TestPanic(t *testing.T) {
+	assert.Panics(t, func() {
+		Panic(errors.New("fail"))
+	})
+	assert.NotPanics(t, func() {
+		Panic(nil)
+	})
+}
+
+func TestContains(t *testing.T) {
+	err := errors.New("hello world")
+	assert.True(t, Contains(err, "hello"))
+	assert.False(t, Contains(err, "goodbye"))
+	assert.False(t, Contains(nil, "any"))
+}
+
+func TestSplit(t *testing.T) {
+	err1 := errors.New("e1")
+	err2 := errors.New("e2")
+	joined := Join(err1, err2)
+
+	errs := Split(joined)
+	// errors.Join returns an error that implements Unwrap() []error
+	assert.Len(t, errs, 2)
+}
+
+func TestCauseExtra(t *testing.T) {
+	inner := errors.New("inner")
+	err := fmt.Errorf("outer: %w", inner)
+	assert.Equal(t, inner, Cause(err))
+}

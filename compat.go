@@ -24,3 +24,11 @@ func Join(errs ...error) error {
 func Unwrap(err error) error {
 	return errors.Unwrap(err)
 }
+
+func JoinWrap(ts lint, errs ...error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+
+	return Wrap(ts, Join(errs...))
+}

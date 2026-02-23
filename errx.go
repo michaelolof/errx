@@ -54,14 +54,15 @@ func (e *errx) Unwrap() error {
 // Returns the list of stamp traces for a given error.
 func (e *errx) Stamps() []int {
 	rtn := make([]int, 0, 15)
-	for {
-		if err := e.Unwrap(); err != nil {
-			if v, ok := err.(interface{ Stamp() int }); ok {
-				rtn = append(rtn, v.Stamp())
+	var curr error = e
+	for curr != nil {
+		if v, ok := curr.(interface{ Stamp() int }); ok {
+			stamp := v.Stamp()
+			if stamp != 0 {
+				rtn = append(rtn, stamp)
 			}
-		} else {
-			break
 		}
+		curr = Unwrap(curr)
 	}
 	return rtn
 }
@@ -188,7 +189,10 @@ func buildErrx(e *errx) error {
 	} else if e.err != nil {
 		return fmt.Errorf("%s; %s", details, e.err.Error())
 	} else if details != "" {
-		return fmt.Errorf("%s %s", details, e.msg)
+		if e.msg != "" {
+			return fmt.Errorf("%s %s", details, e.msg)
+		}
+		return fmt.Errorf("%s", details)
 	} else {
 		return fmt.Errorf("%s", e.msg)
 	}

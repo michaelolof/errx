@@ -285,3 +285,104 @@ func TestWrappedFindDataFromParsedError(t *testing.T) {
 		assert.Equal(t, *dataIntL, []int{1, 2, 3, 4, 7})
 	}
 }
+func TestBuilders(t *testing.T) {
+	t.Run("NewBuild", func(t *testing.T) {
+		err := NewBuild(123, "test error").WithKind(Kind("test_kind"))
+		assert.Equal(t, "[ts 123 kind test_kind] test error", err.Error())
+		assert.Equal(t, 123, err.Stamp())
+		assert.Equal(t, "test_kind", err.Kind())
+	})
+
+	t.Run("BuildFrom", func(t *testing.T) {
+		baseErr := errors.New("base error")
+		err := BuildFrom(456, baseErr).WithKind(Kind("wrap_kind"))
+		assert.Equal(t, "[ts 456 kind wrap_kind]; base error", err.Error())
+	})
+}
+
+func TestFormatting(t *testing.T) {
+	t.Run("Newf", func(t *testing.T) {
+		err := Newf(789, "error %d: %s", 1, "failed")
+		assert.Equal(t, "[ts 789] error 1: failed", err.Error())
+	})
+
+	t.Run("Wrapf", func(t *testing.T) {
+		baseErr := errors.New("original")
+		err := Wrapf(101, "wrapped %s: %v", baseErr, "context")
+		assert.Equal(t, "[ts 101]; wrapped original: context", err.Error())
+	})
+
+	t.Run("Wrapf with errx", func(t *testing.T) {
+		baseErr := New(202, "inner")
+		err := Wrapf(303, "outer %s: %v", baseErr, "msg")
+		assert.Equal(t, "[ts 303]; [ts 202] outer inner: msg", err.Error())
+	})
+}
+
+func TestKindFunctions(t *testing.T) {
+	kind := Kind("auth")
+
+	t.Run("NewKind", func(t *testing.T) {
+		err := NewKind(404, kind, "not authorized")
+		assert.Equal(t, "[ts 404 kind auth] not authorized", err.Error())
+		assert.True(t, IsKind(err, kind))
+	})
+
+	t.Run("WrapKind", func(t *testing.T) {
+		base := errors.New("db error")
+		err := WrapKind(505, kind, base)
+		assert.Equal(t, "[ts 505 kind auth]; db error", err.Error())
+		assert.True(t, IsKind(err, kind))
+	})
+
+	t.Run("NewKindf", func(t *testing.T) {
+		err := NewKindf(606, kind, "user %d failed", 123)
+		assert.Equal(t, "[ts 606 kind auth] user 123 failed", err.Error())
+	})
+
+	t.Run("WrapKindf", func(t *testing.T) {
+		base := errors.New("io error")
+		err := WrapKindf(707, kind, "wrapped: %v", base)
+		assert.Equal(t, "[ts 707 kind auth]; wrapped: io error", err.Error())
+	})
+}
+
+func TestStamps(t *testing.T) {
+	err := New(1, "e1")
+	err = Wrap(2, err)
+	err = Wrap(3, err)
+
+	ex, ok := err.(*errx)
+	assert.True(t, ok)
+	stamps := ex.Stamps()
+	assert.Equal(t, []int{3, 2, 1}, stamps)
+}
+
+func TestEdgeCases(t *testing.T) {
+	t.Run("Wrap nil", func(t *testing.T) {
+		err := Wrap(123, nil)
+		assert.Equal(t, "[ts 123]", err.Error())
+	})
+
+	t.Run("Zero stamp", func(t *testing.T) {
+		err := New(0, "nothing")
+		assert.Equal(t, "nothing", err.Error())
+	})
+
+	t.Run("Empty message", func(t *testing.T) {
+		err := New(123, "")
+		assert.Equal(t, "[ts 123]", err.Error())
+	})
+}
+func TestJoinWrap(t *testing.T) {
+	err1 := errors.New("e1")
+	err2 := errors.New("e2")
+	joined := JoinWrap(123, err1, err2)
+	assert.Contains(t, joined.Error(), "[ts 123]")
+	assert.Contains(t, joined.Error(), "e1")
+	assert.Contains(t, joined.Error(), "e2")
+}
+
+func TestUseLogger(t *testing.T) {
+	UseLogger(nil)
+}

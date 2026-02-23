@@ -51,7 +51,9 @@ type DataType interface {
 func IsKind(err error, kind errKind) bool {
 	for err != nil {
 		if e, ok := err.(interface{ Kind() string }); ok {
-			return e.Kind() == kind.kind
+			if e.Kind() == kind.kind {
+				return true
+			}
 		}
 		err = Unwrap(err)
 	}
@@ -62,7 +64,9 @@ func IsDataKind[T DataType](err error, kind func(d T) errKind) bool {
 	var d T
 	for err != nil {
 		if e, ok := err.(interface{ Kind() string }); ok {
-			return e.Kind() == kind(d).kind
+			if e.Kind() == kind(d).kind {
+				return true
+			}
 		}
 		err = Unwrap(err)
 	}
