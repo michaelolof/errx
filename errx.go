@@ -2,6 +2,7 @@ package errx
 
 import (
 	"fmt"
+	"log/slog"
 )
 
 // A literal int
@@ -197,4 +198,46 @@ func buildErrx(e *errx) error {
 		return fmt.Errorf("%s", e.msg)
 	}
 
+}
+
+// LogValue implements slog.LogValuer interface
+func (e *errx) LogValue() slog.Value {
+	attrs := make([]slog.Attr, 0, 4)
+
+	stamps := e.Stamps()
+	if len(stamps) > 0 {
+		attrs = append(attrs, slog.Any("error_stamps", stamps))
+	}
+
+	if kind := e.Kind(); kind != "" {
+		attrs = append(attrs, slog.String("error_kind", kind))
+	}
+
+	if e.kind.data.isSet {
+		if e.kind.data.val != nil {
+			attrs = append(attrs, slog.Any("error_data", e.kind.data.val))
+		} else if e.kind.data.valStr != "" {
+			attrs = append(attrs, slog.String("error_data_str", e.kind.data.valStr))
+		}
+	}
+
+	if e.msg != "" {
+		attrs = append(attrs, slog.String("error_msg", e.msg))
+	}
+
+	if e.errx != nil {
+		attrs = append(attrs, slog.Any("error_cause", e.errx))
+	} else if e.err != nil {
+		attrs = append(attrs, slog.String("error_cause", e.err.Error()))
+	}
+
+	return slog.GroupValue(attrs...)
+}
+
+// Is implements structural equivalence to avoid string allocation during errors.Is mapping
+func (e *errx) Is(target error) bool {
+	if t, ok := target.(*errx); ok {
+		return e.kind.kind == t.kind.kind && e.msg == t.msg && e.kind.data.String() == t.kind.data.String()
+	}
+	return e.Error() == target.Error()
 }

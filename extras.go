@@ -50,6 +50,18 @@ func Cause(err error) error {
 	return err
 }
 
+// CauseMessage returns just the error message (without the stamp, data, or kind) of the most deeply nested error in the chain.
+func CauseMessage(err error) string {
+	err = Cause(err)
+	if err == nil {
+		return ""
+	}
+	if st, ok := err.(StampedErr); ok {
+		return st.Msg()
+	}
+	return err.Error()
+}
+
 func Panic(err error) {
 	if err != nil {
 		panic(err)
@@ -220,122 +232,10 @@ func stacksToErr(frames []stackFrame) *errx {
 }
 
 func fromStr[T any](str string) (*T, error) {
-	var result any
-	var typeName string = fmt.Sprintf("%T", *new(T))
-
-	switch typeName {
-	case "int":
-		val, err := strconv.Atoi(str)
-		if err != nil {
-			return nil, err
-		}
-		result = val
-
-	case "float32":
-		l, err := strconv.ParseFloat(str, 32)
-		if err != nil {
-			return nil, err
-		}
-		result = float32(l)
-
-	case "float64":
-		l, err := strconv.ParseFloat(str, 64)
-		if err != nil {
-			return nil, err
-		}
-		result = l
-
-	case "string":
-		l, err := strconv.Unquote(str)
-		if err != nil {
-			return nil, err
-		}
-		result = l
-
-	case "[]int":
-		lstr := strings.Split(str[1:len(str)-1], ", ")
-		lint := make([]int, 0, len(lstr))
-		for _, v := range lstr {
-			val, err := strconv.Atoi(v)
-			if err != nil {
-				return nil, err
-			}
-			lint = append(lint, val)
-		}
-		result = lint
-
-	case "[]float32":
-		lstr := strings.Split(str[1:len(str)-1], ", ")
-		lint := make([]float32, 0, len(lstr))
-		for _, v := range lstr {
-			val, err := strconv.ParseFloat(v, 32)
-			if err != nil {
-				return nil, err
-			}
-			lint = append(lint, float32(val))
-		}
-		result = lint
-
-	case "[]float64":
-		lstr := strings.Split(str[1:len(str)-1], ", ")
-		lint := make([]float64, 0, len(lstr))
-		for _, v := range lstr {
-			val, err := strconv.ParseFloat(v, 64)
-			if err != nil {
-				return nil, err
-			}
-			lint = append(lint, val)
-		}
-		result = lint
-
-	case "[]string":
-		var l []string
-		err := json.Unmarshal([]byte(str), &l)
-		if err != nil {
-			return nil, err
-		}
-		result = l
-
-	case "map[string]int":
-		ml := make(map[string]int)
-		err := json.Unmarshal([]byte(str), &ml)
-		if err != nil {
-			return nil, err
-		}
-		result = ml
-
-	case "map[string]float32":
-		ml := make(map[string]float32)
-		err := json.Unmarshal([]byte(str), &ml)
-		if err != nil {
-			return nil, err
-		}
-		result = ml
-
-	case "map[string]float64":
-		ml := make(map[string]float64)
-		err := json.Unmarshal([]byte(str), &ml)
-		if err != nil {
-			return nil, err
-		}
-		result = ml
-
-	case "map[string]string":
-		ml := make(map[string]string)
-		err := json.Unmarshal([]byte(str), &ml)
-		if err != nil {
-			return nil, err
-		}
-		result = ml
-
-	default:
-		return nil, fmt.Errorf("match not found for type '%s'", typeName)
+	var result T
+	err := json.Unmarshal([]byte(str), &result)
+	if err != nil {
+		return nil, err
 	}
-
-	rtn, ok := result.(T)
-	if !ok {
-		return nil, fmt.Errorf("error converting match value '%v' to type '%s'", result, typeName)
-	}
-
-	return &rtn, nil
+	return &result, nil
 }

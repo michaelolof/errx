@@ -86,24 +86,80 @@ func TestErrorUnwrapping(t *testing.T) {
 }
 
 func TestErrorIs(t *testing.T) {
-	err0 := errors.New("something one")
-	err := wrapErr(1741638522, err0)
-	err = wrapErr(1741638536, err)
-	match := errors.Is(err, err0)
-	assert.True(t, match)
+	t.Run("Basic string matching", func(t *testing.T) {
+		err0 := errors.New("something one")
+		err := wrapErr(1741638522, err0)
+		err = wrapErr(1741638536, err)
+		assert.True(t, errors.Is(err, err0))
+		assert.True(t, Is(err, err0))
+	})
 
-	err1 := newErr(1741638630, "something two")
-	err = wrapErr(1741638643, err1)
-	err = wrapErr(1741638650, err)
-	match = errors.Is(err, err1)
-	assert.True(t, match)
+	t.Run("Exact structural match", func(t *testing.T) {
+		err1 := newErr(1741638630, "something two")
+		err := wrapErr(1741638643, err1)
+		err = wrapErr(1741638650, err)
+		assert.True(t, errors.Is(err, err1))
+		assert.True(t, Is(err, err1))
+	})
 
-	err2 := newErr(1741638827, "something two")
-	err = wrapErr(1741638830, err2)
-	err = wrapErr(1741638832, err)
-	match = Is(err, err2)
-	fmt.Println(match)
-	assert.True(t, match)
+	t.Run("Stamps don't have to match. They are not part of error signature", func(t *testing.T) {
+		err1 := newErr(100, "same message")
+		err2 := newErr(200, "same message")
+		assert.True(t, Is(err1, err2))
+	})
+
+	t.Run("Mismatching kinds", func(t *testing.T) {
+		err1 := newErr(100, "same message").WithKind(Kind("kind_a"))
+		err2 := newErr(100, "same message").WithKind(Kind("kind_b"))
+		assert.False(t, Is(err1, err2))
+	})
+
+	t.Run("Mismatching string data", func(t *testing.T) {
+		err1 := newErr(100, "msg").WithKind(DataKind[string]("k")("val1"))
+		err2 := newErr(100, "msg").WithKind(DataKind[string]("k")("val2"))
+		assert.False(t, Is(err1, err2))
+	})
+
+	t.Run("Matching slice data natively against parsed string", func(t *testing.T) {
+		err1 := newErr(100, "msg").WithKind(DataKind[[]int]("k")([]int{1, 2, 3}))
+		err2 := ParseStampedError(err1.Error())
+		// Although err1 holds native []int and err2 holds a JSON string "[1,2,3]",
+		// they should evaluate equivalently under Is() due to the .String() conversion matching
+		assert.True(t, Is(err1, err2))
+	})
+
+	t.Run("Unrelated custom error type", func(t *testing.T) {
+		type customErr struct{ msg string }
+		// Need to declare a function for it but we can't attach methods to types defined inside functions.
+		// So instead I'll just rely on a simple errors.New test, or use exactly what was requested.
+		// To avoid scope issues, I'll use a local type that delegates, but there's a simpler way: just use a standard error interface mock or errors.New
+		// To emulate an external custom error:
+		err1 := fmt.Errorf("custom failure") // acts as a non-errx error
+
+		err2 := newErr(100, "custom failure") // An errx error with a stamp
+		err3 := newErr(0, "custom failure")   // An errx error with a zero stamp
+
+		// errors.Is should find a match if the string messages are identical,
+		// as fmt.Errorf does not have an Unwrap method that matches errx.
+		// Wait, errors.Is checks Unwraps, which won't match strings unless we use Is
+
+		// Our custom Is() should match based on string for non-errx types
+		// when the errx error has a zero stamp, or if the target is not an *errx.
+		assert.False(t, Is(err2, err1)) // 100 vs clean
+		assert.True(t, Is(err3, err1))  // 0 clean string matches exactly
+	})
+
+	t.Run("Nil comparisons", func(t *testing.T) {
+		var err error = nil
+		assert.True(t, Is(err, nil))
+
+		var errTyped *errx = nil
+		assert.False(t, Is(errTyped, nil)) // typed nils inside error interfaces are technically not untyped nil
+
+		err1 := newErr(100, "msg")
+		assert.False(t, Is(err1, nil))
+		assert.False(t, Is(nil, err1))
+	})
 }
 
 func TestFindData(t *testing.T) {

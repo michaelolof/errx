@@ -123,3 +123,53 @@ func TestCauseExtra(t *testing.T) {
 	err := fmt.Errorf("outer: %w", inner)
 	assert.Equal(t, inner, Cause(err))
 }
+
+func TestCauseMessage(t *testing.T) {
+	t.Run("errx tree", func(t *testing.T) {
+		err1 := newErr(100, "base failure")
+		err := wrapErr(200, err1).WithKind(Kind("some_kind"))
+		err = wrapErr(300, err)
+		assert.Equal(t, "base failure", CauseMessage(err))
+	})
+
+	t.Run("errx tree with wrapped formatted fmt.Errorf", func(t *testing.T) {
+		stdErr := fmt.Errorf("formatting user %s failed", "John")
+		err1 := fmt.Errorf("wrapped context: %w", stdErr)
+		err := wrapErr(100, err1).WithKind(Kind("wrap_kind"))
+		assert.Equal(t, "formatting user John failed", CauseMessage(err))
+	})
+
+	t.Run("errx tree with nested stamped error containing kind and data", func(t *testing.T) {
+		err1 := newErr(100, "deepest stamped failure").WithKind(DataKind[int]("numeric_fault")(42))
+		err := wrapErr(200, err1).WithKind(Kind("middle_kind"))
+		err = wrapErr(300, err)
+		assert.Equal(t, "deepest stamped failure", CauseMessage(err))
+	})
+
+	t.Run("errx stringified and parsed back", func(t *testing.T) {
+		err1 := newErr(100, "original base message").WithKind(DataKind[string]("db_error")("connection lost"))
+		err := wrapErr(200, err1).WithKind(Kind("api_fault"))
+		err = wrapErr(300, err)
+
+		formattedStr := err.Error()
+		parsedErr := ParseStampedError(formattedStr)
+
+		assert.Equal(t, "original base message", CauseMessage(parsedErr))
+	})
+
+	t.Run("errx wrapping fmt.Errorf", func(t *testing.T) {
+		stdErr := errors.New("standard error")
+		err1 := fmt.Errorf("wrapped context: %w", stdErr)
+		err := wrapErr(100, err1).WithKind(Kind("wrap_kind"))
+		assert.Equal(t, "standard error", CauseMessage(err))
+	})
+
+	t.Run("pure standard error", func(t *testing.T) {
+		stdErr := errors.New("just standard")
+		assert.Equal(t, "just standard", CauseMessage(stdErr))
+	})
+
+	t.Run("nil error", func(t *testing.T) {
+		assert.Equal(t, "", CauseMessage(nil))
+	})
+}

@@ -5,12 +5,13 @@ import (
 )
 
 func Is(err, target error) bool {
-	itis := errors.Is(err, target)
-	if itis {
-		return itis
-	} else {
-		return err.Error() == target.Error()
+	if errors.Is(err, target) {
+		return true
 	}
+	if err == nil || target == nil {
+		return false
+	}
+	return err.Error() == target.Error()
 }
 
 func As(err error, taget any) bool {

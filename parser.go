@@ -26,7 +26,12 @@ func (l *lexer) hasNext() bool {
 
 func (l *lexer) nextToken() token {
 	var tok token
-	currStr := string(l.currChar)
+	var currStr string
+	if l.currChar == 0 {
+		currStr = ""
+	} else {
+		currStr = l.source[l.currPos:l.nextPos]
+	}
 	switch l.currChar {
 	case 0:
 		tok.typ = eof
@@ -40,7 +45,7 @@ func (l *lexer) nextToken() token {
 		}
 	case ']':
 		tok.literal = currStr
-		arrPop(&l.openBracketsCount)
+		l.openBracketsCount = l.openBracketsCount[:len(l.openBracketsCount)-1]
 		if len(l.openBracketsCount) == 0 {
 			tok.typ = closeBrackets
 		} else {
@@ -71,7 +76,7 @@ func (l *lexer) nextToken() token {
 		pretext := l.peekBehind(1)
 		postText := l.peekAhead(5)
 		if pretext == " " && postText == "kind " {
-			arrPop(&l.list) // remove pretext space from tree
+			l.list = l.list[:len(l.list)-1] // remove pretext space from tree
 			tok.typ = kindDirective
 			tok.literal = "kind"
 			l.moveCursor(5)
@@ -83,7 +88,7 @@ func (l *lexer) nextToken() token {
 		preText := l.peekBehind(1)
 		postText := l.peekAhead(5)
 		if preText == " " && postText == "data " {
-			arrPop(&l.list) // remove pretext space from tree
+			l.list = l.list[:len(l.list)-1] // remove pretext space from tree
 			tok.typ = dataDirective
 			tok.literal = "data"
 			l.moveCursor(5)
